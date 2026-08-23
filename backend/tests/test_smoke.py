@@ -10,6 +10,9 @@ os.environ["JWT_SECRET"] = "test-secret-that-is-definitely-long-enough-123456"
 os.environ["BFF_SHARED_SECRET"] = "test-bff-secret-that-is-definitely-long-enough-123456"
 os.environ["APP_ENV"] = "test"
 os.environ["SEED_DEMO"] = "false"
+os.environ["WEB_PUSH_ENABLED"] = "false"
+os.environ["APPLE_WALLET_ENABLED"] = "false"
+os.environ["GOOGLE_WALLET_ENABLED"] = "false"
 
 from fastapi.testclient import TestClient
 
@@ -76,6 +79,19 @@ def test_public_join_does_not_leak_existing_token():
     card = client.get(f"/api/public/card/{token}")
     assert card.status_code == 200
     assert card.json()["stamp_balance"] == 0
+
+    push_status = client.get(f"/api/public/card/{token}/push/status")
+    assert push_status.status_code == 200
+    assert push_status.json() == {"enabled": False, "vapid_public_key": ""}
+
+    subscribe = client.post(
+        f"/api/public/card/{token}/push/subscribe",
+        json={
+            "endpoint": "https://push.example.com/subscriptions/0123456789abcdef",
+            "keys": {"p256dh": "a" * 32, "auth": "b" * 16},
+        },
+    )
+    assert subscribe.status_code == 503
 
 
 def test_admin_flow_and_password_revocation():

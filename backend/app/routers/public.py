@@ -4,7 +4,7 @@ import string
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from ..models import Business, Customer
 from ..rate_limit import limiter
 from ..request_utils import client_ip, privacy_key
 from ..schemas import PublicBusinessOut, PublicCardOut, PublicJoinIn, PublicJoinOut
+from ..wallets import apple_pkpass, google_save_url
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -29,6 +30,18 @@ def normalize_phone(phone: str) -> str:
     leading_plus = raw.startswith("+")
     digits = "".join(ch for ch in raw if ch.isdigit())
     return ("+" if leading_plus else "") + digits
+
+
+def public_customer(db: Session, token: str) -> tuple[Customer, Business]:
+    if len(token) < 32 or len(token) > 64:
+        raise HTTPException(404, "Tarjeta no encontrada.")
+    customer = db.scalar(select(Customer).where(Customer.public_token == token, Customer.active.is_(True)))
+    if not customer:
+        raise HTTPException(404, "Tarjeta no encontrada.")
+    business = db.get(Business, customer.business_id)
+    if not business or not business.active:
+        raise HTTPException(404, "Negocio no disponible.")
+    return customer, business
 
 
 @router.get("/business/{slug}", response_model=PublicBusinessOut)
@@ -54,19 +67,10 @@ def public_join(request: Request, slug: str, payload: PublicJoinIn, db: Session 
     if len(phone.replace("+", "")) < 6:
         raise HTTPException(422, "Teléfono inválido.")
 
-    # Prevent database spam even if the originating-IP header is manipulated.
-    limiter.check(
-        f"join-phone:{business.id}:{privacy_key(phone)}",
-        limit=4,
-        window_seconds=60 * 60,
-    )
+    limiter.check(f"join-phone:{business.id}:{privacy_key(phone)}", limit=4, window_seconds=60 * 60)
 
-    customer = db.scalar(
-        select(Customer).where(Customer.business_id == business.id, Customer.phone == phone)
-    )
+    customer = db.scalar(select(Customer).where(Customer.business_id == business.id, Customer.phone == phone))
     if customer:
-        # Critical security fix: NEVER return an existing card's bearer token merely
-        # because somebody knows its phone number.
         raise HTTPException(
             409,
             "Ya existe una tarjeta con ese teléfono. Abrila desde el dispositivo donde la guardaste o pedí ayuda al negocio.",
@@ -88,10 +92,7 @@ def public_join(request: Request, slug: str, payload: PublicJoinIn, db: Session 
             return customer
         except IntegrityError:
             db.rollback()
-            # A concurrent registration for the same phone should not reveal its token.
-            existing = db.scalar(
-                select(Customer).where(Customer.business_id == business.id, Customer.phone == phone)
-            )
+            existing = db.scalar(select(Customer).where(Customer.business_id == business.id, Customer.phone == phone))
             if existing:
                 raise HTTPException(409, "Ya existe una tarjeta con ese teléfono.")
 
@@ -101,19 +102,7 @@ def public_join(request: Request, slug: str, payload: PublicJoinIn, db: Session 
 @router.get("/card/{token}", response_model=PublicCardOut)
 def public_card(request: Request, token: str, db: Session = Depends(get_db)):
     limiter.check(f"public-card:{client_ip(request)}", limit=180, window_seconds=60)
-    if len(token) < 32 or len(token) > 64:
-        raise HTTPException(404, "Tarjeta no encontrada.")
-
-    customer = db.scalar(
-        select(Customer).where(Customer.public_token == token, Customer.active.is_(True))
-    )
-    if not customer:
-        raise HTTPException(404, "Tarjeta no encontrada.")
-
-    business = db.get(Business, customer.business_id)
-    if not business or not business.active:
-        raise HTTPException(404, "Negocio no disponible.")
-
+    customer, business = public_customer(db, token)
     return PublicCardOut(
         business=business,
         customer_name=customer.name,
@@ -124,6 +113,50 @@ def public_card(request: Request, token: str, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/card/{token}/wallet/status")
+def wallet_status(request: Request, token: str, db: Session = Depends(get_db)):
+    limiter.check(f"wallet-status:{client_ip(request)}", limit=120, window_seconds=60)
+    public_customer(db, token)
+    return {
+        "apple": settings.apple_wallet_configured,
+        "google": settings.google_wallet_configured,
+    }
+
+
+@router.get("/card/{token}/wallet/apple")
+def wallet_apple(request: Request, token: str, db: Session = Depends(get_db)):
+    limiter.check(f"wallet-apple:{client_ip(request)}", limit=20, window_seconds=60)
+    customer, business = public_customer(db, token)
+    if not settings.apple_wallet_configured:
+        raise HTTPException(503, "Apple Wallet todavía no está configurado.")
+    try:
+        payload = apple_pkpass(business, customer)
+    except Exception as exc:
+        raise HTTPException(503, "No se pudo generar el pase de Apple Wallet.") from exc
+    filename = f"{business.slug}-{customer.card_code}.pkpass"
+    return Response(
+        payload,
+        media_type="application/vnd.apple.pkpass",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/card/{token}/wallet/google")
+def wallet_google(request: Request, token: str, db: Session = Depends(get_db)):
+    limiter.check(f"wallet-google:{client_ip(request)}", limit=30, window_seconds=60)
+    customer, business = public_customer(db, token)
+    if not settings.google_wallet_configured:
+        raise HTTPException(503, "Google Wallet todavía no está configurado.")
+    try:
+        url = google_save_url(business, customer)
+    except Exception as exc:
+        raise HTTPException(503, "No se pudo preparar Google Wallet.") from exc
+    return JSONResponse({"url": url}, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/business/{slug}/qr")
 def business_qr(request: Request, slug: str, db: Session = Depends(get_db)):
     limiter.check(f"public-qr:{client_ip(request)}", limit=60, window_seconds=60)
@@ -132,11 +165,7 @@ def business_qr(request: Request, slug: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Negocio no encontrado.")
 
     target = f"{settings.public_web_url.rstrip('/')}/join/{business.slug}"
-    qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_H,
-        border=4,
-        box_size=14,
-    )
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H, border=4, box_size=14)
     qr.add_data(target)
     qr.make(fit=True)
     image = qr.make_image(fill_color="black", back_color="white")

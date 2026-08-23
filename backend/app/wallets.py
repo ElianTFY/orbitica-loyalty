@@ -1,7 +1,7 @@
 import base64
 import io
 import json
-import os
+import subprocess
 import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -9,9 +9,9 @@ from hashlib import sha1
 from pathlib import Path
 
 import jwt
-import requests
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, pkcs12
 from cryptography.x509 import load_pem_x509_certificate
+from PIL import Image, ImageDraw
 
 from .config import settings
 from .models import Business, Customer
@@ -30,6 +30,19 @@ def _hex_color(value: str) -> str:
         return "rgb(31,111,235)"
 
 
+def _png(size: tuple[int, int], text: str) -> bytes:
+    image = Image.new("RGBA", size, (17, 17, 17, 255))
+    draw = ImageDraw.Draw(image)
+    # Uses Pillow's built-in font so deployment does not depend on bundled font files.
+    bbox = draw.textbbox((0, 0), text)
+    x = max((size[0] - (bbox[2] - bbox[0])) // 2, 2)
+    y = max((size[1] - (bbox[3] - bbox[1])) // 2, 2)
+    draw.text((x, y), text, fill=(255, 255, 255, 255))
+    out = io.BytesIO()
+    image.save(out, format="PNG", optimize=True)
+    return out.getvalue()
+
+
 def apple_pkpass(business: Business, customer: Customer) -> bytes:
     if not settings.apple_wallet_configured:
         raise RuntimeError("Apple Wallet no está configurado.")
@@ -43,12 +56,10 @@ def apple_pkpass(business: Business, customer: Customer) -> bytes:
         raise RuntimeError("Certificado Apple Wallet inválido.")
 
     wwdr = load_pem_x509_certificate(base64.b64decode(settings.apple_wwdr_cert_base64))
-
-    serial = customer.id
     pass_json = {
         "formatVersion": 1,
         "passTypeIdentifier": settings.apple_pass_type_identifier,
-        "serialNumber": serial,
+        "serialNumber": customer.id,
         "teamIdentifier": settings.apple_team_identifier,
         "organizationName": business.name,
         "description": f"Tarjeta de fidelidad {business.name}",
@@ -67,6 +78,10 @@ def apple_pkpass(business: Business, customer: Customer) -> bytes:
             "auxiliaryFields": [
                 {"key": "code", "label": "CÓDIGO", "value": customer.card_code}
             ],
+            "backFields": [
+                {"key": "terms", "label": "Programa", "value": f"Acumulá {business.stamps_required} sellos y recibí: {business.reward_name}."},
+                {"key": "web", "label": "Tarjeta web", "value": f"{settings.public_web_url.rstrip('/')}/card/{customer.public_token}"},
+            ],
         },
         "barcode": {
             "format": "PKBarcodeFormatQR",
@@ -74,43 +89,45 @@ def apple_pkpass(business: Business, customer: Customer) -> bytes:
             "messageEncoding": "iso-8859-1",
             "altText": customer.card_code,
         },
-        "backFields": [
-            {"key": "terms", "label": "Programa", "value": f"Acumulá {business.stamps_required} sellos y recibí: {business.reward_name}."},
-            {"key": "web", "label": "Tarjeta web", "value": f"{settings.public_web_url.rstrip('/')}/card/{customer.public_token}"},
-        ],
     }
-
-    # Minimal SVG assets keep the pass valid without storing customer-uploaded images yet.
-    icon_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="58" height="58"><rect width="58" height="58" rx="10" fill="#111"/><text x="29" y="38" text-anchor="middle" font-size="30" fill="white">O</text></svg>'
-    logo_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="100"><rect width="320" height="100" fill="transparent"/><text x="10" y="68" font-size="52" fill="white">Orbítica</text></svg>'
 
     files = {
-        "pass.json": json.dumps(pass_json, ensure_ascii=False, separators=(",", ":")).encode(),
-        "icon.svg": icon_svg.encode(),
-        "icon@2x.svg": icon_svg.encode(),
-        "logo.svg": logo_svg.encode(),
-        "logo@2x.svg": logo_svg.encode(),
+        "pass.json": json.dumps(pass_json, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+        "icon.png": _png((29, 29), "O"),
+        "icon@2x.png": _png((58, 58), "O"),
+        "logo.png": _png((160, 50), business.name[:18]),
+        "logo@2x.png": _png((320, 100), business.name[:18]),
     }
     manifest = {name: sha1(data).hexdigest() for name, data in files.items()}
-    manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode()
+    manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode("utf-8")
 
-    # Sign manifest with OpenSSL; cryptography does not provide the exact PKCS#7 detached flow needed here.
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        (root / "manifest.json").write_bytes(manifest_bytes)
-        (root / "cert.pem").write_bytes(cert.public_bytes(Encoding.PEM))
-        (root / "wwdr.pem").write_bytes(wwdr.public_bytes(Encoding.PEM))
-        (root / "key.pem").write_bytes(
+        manifest_path = root / "manifest.json"
+        cert_path = root / "cert.pem"
+        wwdr_path = root / "wwdr.pem"
+        key_path = root / "key.pem"
+        signature_path = root / "signature"
+        manifest_path.write_bytes(manifest_bytes)
+        cert_path.write_bytes(cert.public_bytes(Encoding.PEM))
+        wwdr_path.write_bytes(wwdr.public_bytes(Encoding.PEM))
+        key_path.write_bytes(
             private_key.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption())
         )
-        result = os.system(
-            f'openssl smime -binary -sign -certfile "{root / "wwdr.pem"}" -signer "{root / "cert.pem"}" '
-            f'-inkey "{root / "key.pem"}" -in "{root / "manifest.json"}" -out "{root / "signature"}" '
-            f'-outform DER >/dev/null 2>&1'
+        subprocess.run(
+            [
+                "openssl", "smime", "-binary", "-sign",
+                "-certfile", str(wwdr_path),
+                "-signer", str(cert_path),
+                "-inkey", str(key_path),
+                "-in", str(manifest_path),
+                "-out", str(signature_path),
+                "-outform", "DER",
+            ],
+            check=True,
+            capture_output=True,
         )
-        if result != 0:
-            raise RuntimeError("No se pudo firmar el pase Apple Wallet.")
-        signature = (root / "signature").read_bytes()
+        signature = signature_path.read_bytes()
 
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -127,7 +144,7 @@ def google_save_url(business: Business, customer: Customer) -> str:
 
     service = json.loads(base64.b64decode(settings.google_wallet_service_account_json_base64))
     issuer_id = settings.google_wallet_issuer_id
-    safe_slug = ''.join(ch if ch.isalnum() else '_' for ch in business.slug)
+    safe_slug = "".join(ch if ch.isalnum() else "_" for ch in business.slug)
     class_id = f"{issuer_id}.orbitica_{safe_slug}"
     object_id = f"{issuer_id}.{customer.id.replace('-', '')}"
 
@@ -170,7 +187,7 @@ def google_save_url(business: Business, customer: Customer) -> str:
         "typ": "savetowallet",
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=10)).timestamp()),
-        "origins": [settings.public_web_url.rstrip('/')],
+        "origins": [settings.public_web_url.rstrip("/")],
         "payload": {
             "loyaltyClasses": [loyalty_class],
             "loyaltyObjects": [loyalty_object],

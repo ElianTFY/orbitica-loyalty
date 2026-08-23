@@ -54,7 +54,7 @@ def _web_push_private_key() -> str:
 
 
 def _send_web_pushes(db, business: Business, customer: Customer, reason: str) -> None:
-    if not settings.web_push_configured:
+    if not settings.web_push_configured or reason == "silent":
         return
 
     title, body = _notification_copy(business, customer, reason)
@@ -256,7 +256,7 @@ def sync_customer_channels(customer_id: str, reason: str = "stamp") -> None:
 
         _send_web_pushes(db, business, customer, reason)
         try:
-            _update_google_wallet(business, customer, notify=True)
+            _update_google_wallet(business, customer, notify=reason != "silent")
         except Exception:
             logger.exception("Google Wallet update failed for customer %s", customer.id)
         try:
@@ -264,3 +264,18 @@ def sync_customer_channels(customer_id: str, reason: str = "stamp") -> None:
         except Exception:
             logger.exception("Apple Wallet update failed for customer %s", customer.id)
         db.commit()
+
+
+def sync_business_channels(business_id: str, reason: str = "program") -> None:
+    """Synchronize every active customer pass after business-program changes."""
+    with SessionLocal() as db:
+        customer_ids = list(
+            db.scalars(
+                select(Customer.id).where(
+                    Customer.business_id == business_id,
+                    Customer.active.is_(True),
+                )
+            ).all()
+        )
+    for customer_id in customer_ids:
+        sync_customer_channels(customer_id, reason)

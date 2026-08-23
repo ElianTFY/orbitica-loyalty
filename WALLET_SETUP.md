@@ -1,6 +1,6 @@
 # Orbítica Loyalty — Apple Wallet + Google Wallet
 
-La aplicación ya incluye botones y endpoints para agregar la tarjeta del cliente a Apple Wallet y Google Wallet. Las credenciales se guardan únicamente en Render.
+La aplicación incluye botones para agregar la tarjeta del cliente a Apple Wallet y Google Wallet y sincroniza el saldo cuando el negocio agrega sellos, canjea un premio o cambia el programa. Las credenciales se guardan únicamente en Render.
 
 ## Apple Wallet
 
@@ -9,6 +9,7 @@ La aplicación ya incluye botones y endpoints para agregar la tarjeta del client
 - Un Pass Type ID propio de Orbítica.
 - Un certificado Pass Type ID y su llave privada.
 - El certificado intermedio WWDR correspondiente.
+- Una URL HTTPS pública para el backend.
 
 ### 2. Crear Pass Type ID
 En Apple Developer → Certificates, Identifiers & Profiles → Identifiers → + → Pass Type IDs.
@@ -59,15 +60,20 @@ Copiá tu Apple Team ID desde la cuenta Apple Developer.
 ### 8. Variables en Render
 
 ```text
+PUBLIC_API_URL=https://TU-BACKEND.onrender.com
 APPLE_WALLET_ENABLED=true
 APPLE_PASS_TYPE_IDENTIFIER=pass.com.orbiticastudio.loyalty
 APPLE_TEAM_IDENTIFIER=TU_TEAM_ID
 APPLE_PASS_P12_BASE64=BASE64_DEL_P12
 APPLE_PASS_P12_PASSWORD=CONTRASENA_DEL_P12
 APPLE_WWDR_CERT_BASE64=BASE64_DEL_WWDR_PEM
+APPLE_WALLET_WEB_SERVICE_SECRET=SECRETO_ALEATORIO_DE_64_CARACTERES
 ```
 
-Nunca pongas estos valores en Vercel ni GitHub.
+`PUBLIC_API_URL` debe ser HTTPS en producción. `APPLE_WALLET_WEB_SERVICE_SECRET` se usa para derivar el token privado de actualización de cada pase. Nunca pongas estos valores en Vercel ni GitHub.
+
+### 9. Cómo se actualiza un pase instalado
+El `.pkpass` contiene `webServiceURL` y `authenticationToken`. Al instalarlo, Wallet registra el dispositivo y su push token con Orbítica. Cuando cambian los sellos, Orbítica envía un push silencioso por APNs; Wallet consulta qué pase cambió y descarga el `.pkpass` actualizado. El campo de sellos usa `changeMessage`, por lo que Wallet puede mostrar el cambio al usuario.
 
 ## Google Wallet
 
@@ -100,6 +106,9 @@ Nunca pongas la llave JSON en GitHub.
 ### 6. Demo Mode y publicación
 Las cuentas nuevas de Google Wallet empiezan en Demo Mode. Probá primero con cuentas de prueba. Para emitir pases a cualquier usuario, completá el Business Profile, prepará una Passes Class y solicitá Publishing Access en Google Pay & Wallet Console.
 
+### 7. Cómo se actualiza un pase instalado
+Después de cada cambio de sellos/canje, Orbítica hace PATCH al Loyalty Object del cliente. Actualiza el saldo y el texto de progreso. Cuando corresponde intenta `NOTIFY_ON_UPDATE`; si Google limita la notificación, Orbítica reintenta sin notificación para que el saldo igual quede sincronizado.
+
 ## Prueba
 Después de guardar las variables, redeployá Render y Vercel. Abrí una tarjeta del cliente:
 
@@ -111,7 +120,6 @@ Si Apple/Google están configurados, aparecerán los botones correspondientes.
 - PostgreSQL sigue siendo la fuente de verdad de los sellos.
 - El NFC no contiene saldo ni credenciales.
 - Los certificados y llaves permanecen exclusivamente en Render.
+- El token de actualización Apple se deriva por pase y no expone el secreto principal.
+- Fallos temporales de Apple/Google no bloquean la venta ni la acreditación del sello.
 - Rotá las llaves si alguna se expone.
-
-## Actualizaciones automáticas
-Esta primera integración genera el pase con el saldo actual al momento de agregarlo. La tarjeta web siempre muestra el saldo en tiempo real. La sincronización automática de un pase ya instalado requiere una segunda capa: Google Wallet REST updates y, para Apple, PassKit Web Service + registro de dispositivos/APNs. No habilites promesas de notificaciones automáticas hasta completar esa capa.

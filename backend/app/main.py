@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from .config import settings
 from .database import SessionLocal
-from .routers import admin, auth, public, superadmin
+from .routers import admin, apple_wallet, auth, public, superadmin
 from .seed import seed_bootstrap
 
 
@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="1.1.0",
+    version="1.2.0",
     docs_url=None if settings.production else "/docs",
     redoc_url=None if settings.production else "/redoc",
     openapi_url=None if settings.production else "/openapi.json",
@@ -45,13 +45,16 @@ async def hardening_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Cross-Origin-Resource-Policy"] = "same-site"
-    if path.startswith(("/api/auth", "/api/admin", "/api/superadmin", "/api/public/card")):
+    if path.startswith(
+        ("/api/auth", "/api/admin", "/api/superadmin", "/api/public/card", "/api/apple-wallet")
+    ):
         response.headers["Cache-Control"] = "no-store"
     return response
 
 
 app.include_router(auth.router)
 app.include_router(public.router)
+app.include_router(apple_wallet.router)
 app.include_router(admin.router)
 app.include_router(superadmin.router)
 
@@ -60,4 +63,4 @@ app.include_router(superadmin.router)
 def health():
     with SessionLocal() as db:
         db.execute(text("SELECT 1"))
-    return {"ok": True, "service": settings.app_name, "version": "1.1.0"}
+    return {"ok": True, "service": settings.app_name, "version": "1.2.0"}

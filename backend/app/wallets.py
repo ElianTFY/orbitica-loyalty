@@ -1,11 +1,12 @@
 import base64
+import hmac
 import io
 import json
 import subprocess
 import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
-from hashlib import sha1
+from hashlib import sha1, sha256
 from pathlib import Path
 
 import jwt
@@ -43,6 +44,24 @@ def _png(size: tuple[int, int], text: str) -> bytes:
     return out.getvalue()
 
 
+def apple_pass_auth_token(customer_id: str) -> str:
+    """Return a stable, unguessable token embedded in an updateable Apple pass."""
+    secret = settings.apple_wallet_web_service_secret.encode("utf-8")
+    return hmac.new(secret, customer_id.encode("utf-8"), sha256).hexdigest()
+
+
+def google_wallet_ids(business: Business, customer: Customer) -> tuple[str, str]:
+    issuer_id = settings.google_wallet_issuer_id
+    safe_slug = "".join(ch if ch.isalnum() else "_" for ch in business.slug)
+    class_id = f"{issuer_id}.orbitica_{safe_slug}"
+    object_id = f"{issuer_id}.{customer.id.replace('-', '')}"
+    return class_id, object_id
+
+
+def google_service_account() -> dict:
+    return json.loads(base64.b64decode(settings.google_wallet_service_account_json_base64))
+
+
 def apple_pkpass(business: Business, customer: Customer) -> bytes:
     if not settings.apple_wallet_configured:
         raise RuntimeError("Apple Wallet no está configurado.")
@@ -69,7 +88,12 @@ def apple_pkpass(business: Business, customer: Customer) -> bytes:
         "labelColor": "rgb(255,255,255)",
         "storeCard": {
             "primaryFields": [
-                {"key": "balance", "label": "SELLOS", "value": f"{customer.stamp_balance}/{business.stamps_required}"}
+                {
+                    "key": "balance",
+                    "label": "SELLOS",
+                    "value": f"{customer.stamp_balance}/{business.stamps_required}",
+                    "changeMessage": "Tus sellos ahora son %@.",
+                }
             ],
             "secondaryFields": [
                 {"key": "customer", "label": "CLIENTE", "value": customer.name},
@@ -79,8 +103,16 @@ def apple_pkpass(business: Business, customer: Customer) -> bytes:
                 {"key": "code", "label": "CÓDIGO", "value": customer.card_code}
             ],
             "backFields": [
-                {"key": "terms", "label": "Programa", "value": f"Acumulá {business.stamps_required} sellos y recibí: {business.reward_name}."},
-                {"key": "web", "label": "Tarjeta web", "value": f"{settings.public_web_url.rstrip('/')}/card/{customer.public_token}"},
+                {
+                    "key": "terms",
+                    "label": "Programa",
+                    "value": f"Acumulá {business.stamps_required} sellos y recibí: {business.reward_name}.",
+                },
+                {
+                    "key": "web",
+                    "label": "Tarjeta web",
+                    "value": f"{settings.public_web_url.rstrip('/')}/card/{customer.public_token}",
+                },
             ],
         },
         "barcode": {
@@ -90,6 +122,10 @@ def apple_pkpass(business: Business, customer: Customer) -> bytes:
             "altText": customer.card_code,
         },
     }
+
+    if settings.apple_wallet_updates_configured:
+        pass_json["webServiceURL"] = f"{settings.public_api_url.rstrip('/')}/api/apple-wallet"
+        pass_json["authenticationToken"] = apple_pass_auth_token(customer.id)
 
     files = {
         "pass.json": json.dumps(pass_json, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
@@ -142,11 +178,8 @@ def google_save_url(business: Business, customer: Customer) -> str:
     if not settings.google_wallet_configured:
         raise RuntimeError("Google Wallet no está configurado.")
 
-    service = json.loads(base64.b64decode(settings.google_wallet_service_account_json_base64))
-    issuer_id = settings.google_wallet_issuer_id
-    safe_slug = "".join(ch if ch.isalnum() else "_" for ch in business.slug)
-    class_id = f"{issuer_id}.orbitica_{safe_slug}"
-    object_id = f"{issuer_id}.{customer.id.replace('-', '')}"
+    service = google_service_account()
+    class_id, object_id = google_wallet_ids(business, customer)
 
     loyalty_class = {
         "id": class_id,
@@ -171,11 +204,18 @@ def google_save_url(business: Business, customer: Customer) -> str:
         },
         "textModulesData": [
             {"id": "reward", "header": "Premio", "body": business.reward_name},
-            {"id": "progress", "header": "Progreso", "body": f"{customer.stamp_balance}/{business.stamps_required} sellos"},
+            {
+                "id": "progress",
+                "header": "Progreso",
+                "body": f"{customer.stamp_balance}/{business.stamps_required} sellos",
+            },
         ],
         "linksModuleData": {
             "uris": [
-                {"uri": f"{settings.public_web_url.rstrip('/')}/card/{customer.public_token}", "description": "Abrir tarjeta web"}
+                {
+                    "uri": f"{settings.public_web_url.rstrip('/')}/card/{customer.public_token}",
+                    "description": "Abrir tarjeta web",
+                }
             ]
         },
     }

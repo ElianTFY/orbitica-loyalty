@@ -2,14 +2,15 @@ import secrets
 import string
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, select
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_business, get_current_user, require_roles
 from ..models import Business, Customer, LoyaltyTransaction, User
+from ..notifications import sync_business_channels, sync_customer_channels
 from ..rate_limit import limiter
 from ..request_utils import client_ip
 from ..schemas import (
@@ -210,6 +211,7 @@ def add_stamp(
     request: Request,
     customer_id: str,
     payload: StampIn,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_roles("owner", "staff")),
     business: Business = Depends(get_current_business),
     db: Session = Depends(get_db),
@@ -219,6 +221,7 @@ def add_stamp(
     if not customer.active:
         raise HTTPException(400, "La tarjeta está inactiva.")
 
+    was_ready = customer.stamp_balance >= business.stamps_required
     customer.stamp_balance += payload.amount
     customer.updated_at = datetime.now(timezone.utc)
     db.add(
@@ -233,6 +236,13 @@ def add_stamp(
     )
     db.commit()
     db.refresh(customer)
+
+    became_ready = not was_ready and customer.stamp_balance >= business.stamps_required
+    background_tasks.add_task(
+        sync_customer_channels,
+        customer.id,
+        "reward" if became_ready else "stamp",
+    )
     return customer
 
 
@@ -240,6 +250,7 @@ def add_stamp(
 def redeem(
     request: Request,
     customer_id: str,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_roles("owner", "staff")),
     business: Business = Depends(get_current_business),
     db: Session = Depends(get_db),
@@ -267,15 +278,15 @@ def redeem(
     )
     db.commit()
     db.refresh(customer)
+    background_tasks.add_task(sync_customer_channels, customer.id, "redeem")
     return customer
-
-
 
 
 @router.post("/customers/{customer_id}/rotate-token", response_model=CustomerOut)
 def rotate_card_token(
     request: Request,
     customer_id: str,
+    background_tasks: BackgroundTasks,
     owner: User = Depends(require_roles("owner")),
     business: Business = Depends(get_current_business),
     db: Session = Depends(get_db),
@@ -286,6 +297,7 @@ def rotate_card_token(
     customer.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(customer)
+    background_tasks.add_task(sync_customer_channels, customer.id, "silent")
     return customer
 
 
@@ -300,17 +312,36 @@ def get_business_settings(
 def update_business_settings(
     request: Request,
     payload: BusinessSettingsIn,
+    background_tasks: BackgroundTasks,
     owner: User = Depends(require_roles("owner")),
     business: Business = Depends(get_current_business),
     db: Session = Depends(get_db),
 ):
     limit_write(request, owner)
     data = payload.model_dump(exclude_none=True)
+    now = datetime.now(timezone.utc)
     for key, value in data.items():
         setattr(business, key, value)
-    business.updated_at = datetime.now(timezone.utc)
+    business.updated_at = now
+
+    if data:
+        # Apple uses Customer.updated_at as its pass update tag. Mark all cards when
+        # business-level fields shown on the pass change.
+        db.execute(
+            update(Customer)
+            .where(Customer.business_id == business.id)
+            .values(updated_at=now)
+        )
     db.commit()
     db.refresh(business)
+
+    if data:
+        visible_program_change = bool({"name", "reward_name", "stamps_required"}.intersection(data))
+        background_tasks.add_task(
+            sync_business_channels,
+            business.id,
+            "program" if visible_program_change else "silent",
+        )
     return business
 
 

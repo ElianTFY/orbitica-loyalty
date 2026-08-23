@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # Shared only between the Next.js BFF and FastAPI. Never expose it to the browser.
     bff_shared_secret: str = ""
     public_web_url: str = "http://localhost:3000"
+    public_api_url: str = "http://localhost:8000"
 
     # Login protection
     login_max_failures: int = 5
@@ -36,11 +37,19 @@ class Settings(BaseSettings):
     apple_pass_p12_base64: str = ""
     apple_pass_p12_password: str = ""
     apple_wwdr_cert_base64: str = ""
+    # Used to derive the per-pass authenticationToken for Apple's update web service.
+    apple_wallet_web_service_secret: str = ""
 
     # Google Wallet. Store the downloaded service-account JSON as base64.
     google_wallet_enabled: bool = False
     google_wallet_issuer_id: str = ""
     google_wallet_service_account_json_base64: str = ""
+
+    # Standards-based Web Push (Chrome/Edge/Firefox/Safari and iOS Home Screen web apps).
+    web_push_enabled: bool = False
+    web_push_vapid_public_key: str = ""
+    web_push_vapid_private_key_base64: str = ""
+    web_push_vapid_subject: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
@@ -68,11 +77,28 @@ class Settings(BaseSettings):
         )
 
     @property
+    def apple_wallet_updates_configured(self) -> bool:
+        return bool(
+            self.apple_wallet_configured
+            and len(self.apple_wallet_web_service_secret) >= 32
+            and self.public_api_url
+        )
+
+    @property
     def google_wallet_configured(self) -> bool:
         return bool(
             self.google_wallet_enabled
             and self.google_wallet_issuer_id
             and self.google_wallet_service_account_json_base64
+        )
+
+    @property
+    def web_push_configured(self) -> bool:
+        return bool(
+            self.web_push_enabled
+            and self.web_push_vapid_public_key
+            and self.web_push_vapid_private_key_base64
+            and self.web_push_vapid_subject
         )
 
     def validate_runtime(self) -> None:
@@ -82,10 +108,15 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT_SECRET debe tener al menos 32 caracteres en producción.")
         if len(self.bff_shared_secret) < 32:
             raise RuntimeError("BFF_SHARED_SECRET debe tener al menos 32 caracteres en producción.")
-        if self.apple_wallet_enabled and not self.apple_wallet_configured:
-            raise RuntimeError("Apple Wallet está habilitado pero faltan credenciales.")
+        if self.apple_wallet_enabled:
+            if not self.apple_wallet_updates_configured:
+                raise RuntimeError("Apple Wallet está habilitado pero faltan credenciales o configuración de actualizaciones.")
+            if not self.public_api_url.startswith("https://"):
+                raise RuntimeError("PUBLIC_API_URL debe usar HTTPS en producción para Apple Wallet.")
         if self.google_wallet_enabled and not self.google_wallet_configured:
             raise RuntimeError("Google Wallet está habilitado pero faltan credenciales.")
+        if self.web_push_enabled and not self.web_push_configured:
+            raise RuntimeError("Web Push está habilitado pero faltan credenciales VAPID.")
 
 
 settings = Settings()

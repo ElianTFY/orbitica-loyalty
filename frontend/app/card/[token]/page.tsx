@@ -5,22 +5,43 @@ import { useParams } from "next/navigation";
 import { apiFetch, readError } from "@/lib/api";
 import type { PublicCard } from "@/lib/types";
 
+type WalletStatus = { apple: boolean; google: boolean };
+
 export default function CardPage() {
   const { token } = useParams<{ token: string }>();
   const [card, setCard] = useState<PublicCard | null>(null);
+  const [wallets, setWallets] = useState<WalletStatus>({ apple: false, google: false });
   const [error, setError] = useState("");
+  const [walletBusy, setWalletBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
-    const response = await apiFetch(`/public/card/${token}`);
-    if (!response.ok) {
-      setError(await readError(response, "No pudimos cargar la tarjeta."));
+    const [cardResponse, walletResponse] = await Promise.all([
+      apiFetch(`/public/card/${token}`),
+      apiFetch(`/public/card/${token}/wallet/status`),
+    ]);
+    if (!cardResponse.ok) {
+      setError(await readError(cardResponse, "No pudimos cargar la tarjeta."));
       return;
     }
-    setCard(await response.json());
+    setCard(await cardResponse.json());
+    if (walletResponse.ok) setWallets(await walletResponse.json());
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function addGoogleWallet() {
+    setWalletBusy(true);
+    setError("");
+    const response = await apiFetch(`/public/card/${token}/wallet/google`);
+    if (!response.ok) {
+      setError(await readError(response, "No pudimos preparar Google Wallet."));
+      setWalletBusy(false);
+      return;
+    }
+    const data = await response.json();
+    window.location.assign(data.url);
+  }
 
   if (!card) {
     return (
@@ -71,6 +92,31 @@ export default function CardPage() {
           <strong>{card.card_code}</strong>
         </div>
 
+        {(wallets.apple || wallets.google) && (
+          <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
+            {wallets.apple && (
+              <a
+                className="button full"
+                style={{ background: "#000", borderColor: "rgba(255,255,255,.22)" }}
+                href={`/api/backend/public/card/${token}/wallet/apple`}
+              >
+                 Agregar a Apple Wallet
+              </a>
+            )}
+            {wallets.google && (
+              <button
+                className="button full"
+                style={{ background: "#fff", color: "#111" }}
+                disabled={walletBusy}
+                onClick={addGoogleWallet}
+              >
+                {walletBusy ? "Preparando…" : "Agregar a Google Wallet"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {error && <div className="alert error">{error}</div>}
         <p className="micro">Mostrá este código al personal. No compartás tu enlace de tarjeta.</p>
       </section>
     </main>

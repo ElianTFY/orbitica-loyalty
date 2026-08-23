@@ -58,12 +58,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const upstream = await fetch(target, { method, headers, body, cache: "no-store" });
 
   const outHeaders = new Headers();
-  const upstreamType = upstream.headers.get("content-type");
-  if (upstreamType) outHeaders.set("Content-Type", upstreamType);
-  const targetHeader = upstream.headers.get("x-qr-target");
-  if (targetHeader) outHeaders.set("X-QR-Target", targetHeader);
-  const retryAfter = upstream.headers.get("retry-after");
-  if (retryAfter) outHeaders.set("Retry-After", retryAfter);
+  for (const name of ["content-type", "content-disposition", "x-qr-target", "retry-after"]) {
+    const value = upstream.headers.get(name);
+    if (value) outHeaders.set(name, value);
+  }
   outHeaders.set("Cache-Control", "no-store");
 
   return new Response(upstream.body, { status: upstream.status, headers: outHeaders });

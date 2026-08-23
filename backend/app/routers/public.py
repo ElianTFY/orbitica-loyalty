@@ -1,6 +1,8 @@
+import hashlib
 import io
 import secrets
 import string
+from datetime import datetime, timezone
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -11,10 +13,17 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..models import Business, Customer
+from ..models import Business, Customer, WebPushSubscription
 from ..rate_limit import limiter
 from ..request_utils import client_ip, privacy_key
-from ..schemas import PublicBusinessOut, PublicCardOut, PublicJoinIn, PublicJoinOut
+from ..schemas import (
+    PublicBusinessOut,
+    PublicCardOut,
+    PublicJoinIn,
+    PublicJoinOut,
+    PushSubscriptionIn,
+    PushUnsubscribeIn,
+)
 from ..wallets import apple_pkpass, google_save_url
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -42,6 +51,10 @@ def public_customer(db: Session, token: str) -> tuple[Customer, Business]:
     if not business or not business.active:
         raise HTTPException(404, "Negocio no disponible.")
     return customer, business
+
+
+def endpoint_hash(endpoint: str) -> str:
+    return hashlib.sha256(endpoint.encode("utf-8")).hexdigest()
 
 
 @router.get("/business/{slug}", response_model=PublicBusinessOut)
@@ -155,6 +168,78 @@ def wallet_google(request: Request, token: str, db: Session = Depends(get_db)):
     except Exception as exc:
         raise HTTPException(503, "No se pudo preparar Google Wallet.") from exc
     return JSONResponse({"url": url}, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/card/{token}/push/status")
+def push_status(request: Request, token: str, db: Session = Depends(get_db)):
+    limiter.check(f"push-status:{client_ip(request)}", limit=120, window_seconds=60)
+    public_customer(db, token)
+    return {
+        "enabled": settings.web_push_configured,
+        "vapid_public_key": settings.web_push_vapid_public_key if settings.web_push_configured else "",
+    }
+
+
+@router.post("/card/{token}/push/subscribe", status_code=201)
+def push_subscribe(
+    request: Request,
+    token: str,
+    payload: PushSubscriptionIn,
+    db: Session = Depends(get_db),
+):
+    limiter.check(f"push-subscribe:{client_ip(request)}", limit=15, window_seconds=10 * 60)
+    if not settings.web_push_configured:
+        raise HTTPException(503, "Las notificaciones todavía no están configuradas.")
+    customer, _ = public_customer(db, token)
+    hashed = endpoint_hash(payload.endpoint)
+    subscription = db.scalar(
+        select(WebPushSubscription).where(WebPushSubscription.endpoint_hash == hashed)
+    )
+    now = datetime.now(timezone.utc)
+    if subscription:
+        subscription.customer_id = customer.id
+        subscription.endpoint = payload.endpoint
+        subscription.p256dh = payload.keys.p256dh
+        subscription.auth = payload.keys.auth
+        subscription.user_agent = (request.headers.get("user-agent") or "")[:255] or None
+        subscription.active = True
+        subscription.updated_at = now
+        db.commit()
+        return {"ok": True}
+
+    db.add(
+        WebPushSubscription(
+            customer_id=customer.id,
+            endpoint_hash=hashed,
+            endpoint=payload.endpoint,
+            p256dh=payload.keys.p256dh,
+            auth=payload.keys.auth,
+            user_agent=(request.headers.get("user-agent") or "")[:255] or None,
+        )
+    )
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/card/{token}/push/subscribe", status_code=204)
+def push_unsubscribe(
+    request: Request,
+    token: str,
+    payload: PushUnsubscribeIn,
+    db: Session = Depends(get_db),
+):
+    limiter.check(f"push-unsubscribe:{client_ip(request)}", limit=30, window_seconds=10 * 60)
+    customer, _ = public_customer(db, token)
+    subscription = db.scalar(
+        select(WebPushSubscription).where(
+            WebPushSubscription.endpoint_hash == endpoint_hash(payload.endpoint),
+            WebPushSubscription.customer_id == customer.id,
+        )
+    )
+    if subscription:
+        db.delete(subscription)
+        db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/business/{slug}/qr")

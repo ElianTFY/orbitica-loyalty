@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 import jwt
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, pkcs12
+from py_vapid import Vapid
 from pywebpush import WebPushException, webpush
 from sqlalchemy import select
 
@@ -49,8 +50,16 @@ def _notification_copy(business: Business, customer: Customer, reason: str) -> t
     )
 
 
-def _web_push_private_key() -> str:
-    return base64.b64decode(settings.web_push_vapid_private_key_base64).decode("utf-8")
+def _web_push_private_key() -> Vapid:
+    """Load the Base64-encoded PEM VAPID key as a py-vapid object.
+
+    pywebpush treats a plain string as URL-safe DER, not PEM text. Passing the
+    decoded PEM string therefore fails at send time. Parsing the PEM explicitly
+    keeps Render's secret format unchanged and gives pywebpush a ready Vapid
+    instance.
+    """
+    private_pem = base64.b64decode(settings.web_push_vapid_private_key_base64)
+    return Vapid.from_pem(private_pem)
 
 
 def _send_web_pushes(db, business: Business, customer: Customer, reason: str) -> None:

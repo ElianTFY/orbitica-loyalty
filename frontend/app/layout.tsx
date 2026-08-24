@@ -1,9 +1,13 @@
 import "./globals.css";
+import "./enhancements.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Orbítica Loyalty",
-  description: "Fidelización digital con QR, NFC y notificaciones",
+  title: {
+    default: "Orbítica Loyalty",
+    template: "%s | Orbítica Loyalty",
+  },
+  description: "Fidelización digital con QR, NFC, Wallet y notificaciones para negocios.",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg" },
   appleWebApp: {

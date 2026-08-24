@@ -56,3 +56,21 @@ def create_business(
     db.refresh(owner)
 
     return SuperBusinessOut(business=business, owner=owner)
+
+
+@router.patch("/businesses/{business_id}/toggle", response_model=BusinessOut)
+def toggle_business(
+    request: Request,
+    business_id: str,
+    admin: User = Depends(require_roles("superadmin")),
+    db: Session = Depends(get_db),
+):
+    limiter.check(f"superadmin-write:{admin.id}:{client_ip(request)}", limit=30, window_seconds=60)
+    business = db.get(Business, business_id)
+    if not business:
+        raise HTTPException(404, "Negocio no encontrado.")
+
+    business.active = not business.active
+    db.commit()
+    db.refresh(business)
+    return business

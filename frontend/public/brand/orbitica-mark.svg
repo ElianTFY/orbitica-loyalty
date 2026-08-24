@@ -1,0 +1,13 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="orbiticaGradient" x1="35" y1="30" x2="220" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A5BFF"/>
+      <stop offset="0.48" stop-color="#155CFF"/>
+      <stop offset="1" stop-color="#791DFF"/>
+    </linearGradient>
+  </defs>
+  <path d="M58 190C30 158 25 111 42 74C61 34 102 15 143 21C164 24 184 33 199 48" stroke="url(#orbiticaGradient)" stroke-width="42" stroke-linecap="butt"/>
+  <path d="M210 80C226 111 225 149 208 178C187 215 147 234 107 228C88 225 70 218 55 207" stroke="url(#orbiticaGradient)" stroke-width="42" stroke-linecap="butt"/>
+  <rect x="173" y="49" width="39" height="39" rx="2" fill="#071633"/>
+  <path d="M29 190L95 145L54 211L29 190Z" fill="#071633"/>
+</svg>

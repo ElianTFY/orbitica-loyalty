@@ -1,5 +1,7 @@
 import "./globals.css";
 import "./enhancements.css";
+import "./identity-v2.css";
+import "./ops-v2.css";
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
@@ -9,7 +11,7 @@ export const metadata: Metadata = {
   },
   description: "Fidelización digital con QR, NFC, Wallet y notificaciones para negocios.",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg" },
+  icons: { icon: "/brand/orbitica-mark.svg" },
   appleWebApp: {
     capable: true,
     title: "Orbítica",
@@ -18,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#07101d",
+  themeColor: "#080a0f",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

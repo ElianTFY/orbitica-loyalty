@@ -1,145 +1,147 @@
 import Link from "next/link";
+import Brand from "@/components/Brand";
 
-const capabilities = [
-  ["01", "Entrada", "QR + NFC", "Un solo gesto abre el programa correcto del negocio, sin descargar una app."],
-  ["02", "Identidad", "Tarjeta viva", "Cada cliente recibe una tarjeta propia con saldo, premio, código y Wallet."],
-  ["03", "Operación", "Panel en tiempo real", "El equipo acredita sellos, canjea premios y consulta actividad desde un solo lugar."],
-  ["04", "Retención", "Push + Wallet", "Los cambios pueden reflejarse en el teléfono y activar recordatorios relevantes."],
+const systems = [
+  ["01", "Entrada", "QR y NFC convierten cualquier mostrador, mesa o empaque en un punto de entrada al programa."],
+  ["02", "Identidad", "Cada cliente obtiene una tarjeta única, con progreso, código y acceso desde el teléfono."],
+  ["03", "Operación", "El negocio acredita sellos, canjes y movimientos desde un panel con roles y trazabilidad."],
+  ["04", "Retorno", "Wallet y notificaciones mantienen el programa visible incluso después de que el cliente se va."],
+];
+
+const useCases = [
+  ["Barberías", "Visitas recurrentes, premio por frecuencia y registro rápido desde el mostrador."],
+  ["Cafeterías", "Acumulación simple por compra, campañas y una experiencia sin app obligatoria."],
+  ["Retail", "Programas por categoría, recompensas y una tarjeta de marca que vive en el teléfono."],
 ];
 
 export default function Home() {
   return (
-    <main className="orb-page">
-      <header className="orb-nav">
-        <div className="orb-wrap orb-nav-inner">
-          <Link href="/" className="orb-wordmark" aria-label="Orbítica Loyalty">
-            <span className="orb-symbol"><i /><b /></span>
-            <span><strong>ORBÍTICA</strong><small>LOYALTY SYSTEM</small></span>
-          </Link>
-          <div className="orb-nav-center">
+    <main className="o-site">
+      <header className="o-nav">
+        <div className="o-wrap o-nav-inner">
+          <Brand product="Loyalty" />
+          <nav className="o-nav-links" aria-label="Navegación principal">
             <a href="#sistema">Sistema</a>
-            <a href="#operacion">Operación</a>
+            <a href="#casos">Casos</a>
             <Link href="/support">Soporte</Link>
-          </div>
-          <div className="orb-nav-actions">
-            <Link className="orb-link" href="/join/porras">Demo ↗</Link>
-            <Link className="orb-button" href="/login">Entrar al panel</Link>
+          </nav>
+          <div className="o-nav-actions">
+            <Link className="o-text-link" href="/join/porras">Demo cliente</Link>
+            <Link className="o-button" href="/login">Entrar al panel</Link>
           </div>
         </div>
       </header>
 
-      <div className="orb-wrap">
-        <section className="orb-hero">
-          <div className="orb-hero-copy">
-            <div className="orb-kicker"><span>01 / FIDELIZACIÓN</span><i /></div>
-            <h1>La relación con tu cliente no debería terminar cuando sale del local.</h1>
+      <div className="o-wrap">
+        <section className="o-hero">
+          <div className="o-hero-copy">
+            <div className="o-kicker"><span>ORBÍTICA LOYALTY</span><i /> SISTEMA DE RETENCIÓN</div>
+            <h1>Una experiencia de fidelidad que se siente como parte de tu marca.</h1>
             <p>
-              Orbítica convierte cada visita en una señal: registro, sello, recompensa,
-              recordatorio y regreso. Todo bajo la identidad de cada negocio.
+              Tarjetas digitales, QR, NFC, Wallet y notificaciones conectadas en una sola operación.
+              Sin obligar al cliente a descargar una app y sin convertir el programa en otra tarea para el negocio.
             </p>
-            <div className="orb-hero-actions">
-              <Link className="orb-button strong" href="/join/porras">Ver experiencia real</Link>
-              <Link className="orb-text-action" href="/login">Explorar panel <span>↗</span></Link>
+            <div className="o-hero-actions">
+              <Link className="o-button o-button-primary" href="/join/porras">Probar la experiencia</Link>
+              <Link className="o-button o-button-ghost" href="/login">Ver el panel</Link>
             </div>
-            <div className="orb-metrics">
-              <div><span>Entrada</span><strong>QR / NFC</strong></div>
-              <div><span>Retención</span><strong>Push / Wallet</strong></div>
-              <div><span>Arquitectura</span><strong>Multi-negocio</strong></div>
+            <div className="o-hero-meta">
+              <span>Multi-negocio</span>
+              <span>Web Push</span>
+              <span>Apple / Google Wallet</span>
+              <span>QR + NFC</span>
             </div>
           </div>
 
-          <div className="orb-console" aria-label="Vista de Orbítica Loyalty">
-            <div className="console-top">
-              <span className="console-id">ORBIT/CLIENT-017</span>
-              <span className="console-status"><i /> EN LÍNEA</span>
-            </div>
-            <div className="console-grid">
-              <div className="console-side">
-                <span>NEGOCIO</span>
-                <strong>PORRAS</strong>
-                <small>BARBER SHOP</small>
+          <div className="o-orbit-stage" aria-label="Vista del producto">
+            <div className="o-orbit-ring o-ring-one" />
+            <div className="o-orbit-ring o-ring-two" />
+            <div className="o-orbit-ring o-ring-three" />
+            <div className="o-stage-card">
+              <div className="o-stage-head">
+                <span className="o-live-dot">LIVE</span>
+                <small>CLIENT PROFILE / 00041</small>
               </div>
-              <div className="console-card">
-                <div className="console-card-head">
-                  <div><small>PROGRAMA ACTIVO</small><h3>Cliente frecuente</h3></div>
-                  <span className="console-chip">CR</span>
-                </div>
-                <div className="orbit-progress">
-                  <div className="orbit-ring">
-                    <span className="orbit-center"><strong>7</strong><small>DE 10</small></span>
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <i key={i} className={i < 7 ? "done" : ""} style={{ "--i": i } as React.CSSProperties} />
-                    ))}
-                  </div>
-                </div>
-                <div className="console-reward"><span>PRÓXIMA RECOMPENSA</span><strong>Corte gratis</strong></div>
-                <div className="console-footer"><span>Wallet listo</span><span>Push activo</span><b>•••</b></div>
+              <div className="o-stage-business">Barbería Porras</div>
+              <div className="o-stage-progress">
+                <div><span>PROGRESO</span><strong>07</strong><small>/ 10</small></div>
+                <div><span>PREMIO</span><strong>Corte gratis</strong></div>
               </div>
+              <div className="o-stage-stamps">
+                {Array.from({ length: 10 }).map((_, index) => <span className={index < 7 ? "on" : ""} key={index}>{String(index + 1).padStart(2, "0")}</span>)}
+              </div>
+              <div className="o-stage-footer"><span>Última actividad</span><strong>+1 sello · hace 2 min</strong></div>
             </div>
-            <div className="console-event">
-              <span>10:24:18</span><b>+1 sello acreditado</b><small>Sincronización completada</small>
-            </div>
+            <div className="o-stage-note note-a"><span>01</span><strong>QR / NFC</strong><small>punto de entrada</small></div>
+            <div className="o-stage-note note-b"><span>02</span><strong>Wallet</strong><small>presencia persistente</small></div>
+            <div className="o-stage-note note-c"><span>03</span><strong>Push</strong><small>reactivación</small></div>
           </div>
         </section>
 
-        <section id="sistema" className="orb-section orb-system">
-          <div className="orb-section-index">02</div>
-          <div className="orb-section-intro">
-            <span>SISTEMA</span>
-            <h2>No es una página con una tarjeta bonita. Es una operación completa detrás.</h2>
+        <section className="o-statement">
+          <div className="o-statement-index">/01</div>
+          <div>
+            <p className="o-statement-big">La fidelidad no debería verse como una promoción pegada encima del negocio.</p>
+            <p className="o-statement-small">Orbítica conecta la experiencia del cliente con la operación interna para que el programa se sienta propio, medible y fácil de mantener.</p>
           </div>
-          <div className="capability-list">
-            {capabilities.map(([n, eyebrow, title, text]) => (
-              <article className="capability-row" key={n}>
-                <span className="cap-number">{n}</span>
-                <div className="cap-title"><small>{eyebrow}</small><h3>{title}</h3></div>
-                <p>{text}</p>
-                <span className="cap-arrow">↗</span>
+        </section>
+
+        <section id="sistema" className="o-section">
+          <div className="o-section-head">
+            <div><span className="o-section-number">/02</span><h2>Un sistema, cuatro momentos.</h2></div>
+            <p>Diseñado alrededor del recorrido real del cliente: entrar, identificarse, acumular y volver.</p>
+          </div>
+          <div className="o-system-list">
+            {systems.map(([number, title, description]) => (
+              <article className="o-system-row" key={number}>
+                <span>{number}</span><h3>{title}</h3><p>{description}</p><i>↗</i>
               </article>
             ))}
           </div>
         </section>
 
-        <section id="operacion" className="orb-section orb-operation">
-          <div className="orb-section-index">03</div>
-          <div className="operation-grid">
-            <div className="operation-copy">
-              <span className="orb-overline">OPERACIÓN DIARIA</span>
-              <h2>Diseñado para que el negocio lo use en segundos, no para que tenga que aprender un software.</h2>
-              <p>Buscar cliente, acreditar, canjear, revisar actividad y continuar atendiendo.</p>
-              <Link className="orb-text-action" href="/login">Abrir panel de operación <span>↗</span></Link>
+        <section className="o-product-frame">
+          <div className="o-product-topline"><span>ORBÍTICA CONTROL ROOM</span><span>PRODUCTION</span><span>SECURE SESSION</span></div>
+          <div className="o-product-grid">
+            <div className="o-product-panel major">
+              <div className="o-product-label">ACTIVIDAD DEL PROGRAMA</div>
+              <div className="o-product-chart">
+                {[24, 34, 29, 52, 46, 72, 66, 82, 76, 94, 86, 100].map((height, i) => <i key={i} style={{ height: `${height}%` }} />)}
+              </div>
+              <div className="o-product-axis"><span>SEM 01</span><span>SEM 06</span><span>SEM 12</span></div>
             </div>
-            <div className="operation-terminal">
-              <div className="terminal-head"><span>CLIENTES / HOY</span><b>24 AGO · 10:27</b></div>
-              <div className="terminal-search">⌕ &nbsp; Buscar nombre, teléfono o código</div>
-              <div className="terminal-row active"><span>EP</span><div><strong>Erick P.</strong><small>8 / 10 sellos</small></div><button>+ SELLO</button></div>
-              <div className="terminal-row"><span>MG</span><div><strong>María G.</strong><small>10 / 10 · premio listo</small></div><button>CANJEAR</button></div>
-              <div className="terminal-row"><span>JR</span><div><strong>José R.</strong><small>3 / 10 sellos</small></div><button>+ SELLO</button></div>
-              <div className="terminal-foot"><span>3 movimientos recientes</span><span>Todo sincronizado ✓</span></div>
-            </div>
+            <div className="o-product-panel"><div className="o-product-label">CLIENTES</div><strong className="o-metric">128</strong><small>+18 este mes</small></div>
+            <div className="o-product-panel"><div className="o-product-label">CANJES</div><strong className="o-metric">23</strong><small>18.0% conversión</small></div>
+            <div className="o-product-panel wide"><div className="o-product-label">CANAL ACTIVO</div><div className="o-channel-row"><span>QR</span><b>ONLINE</b><span>NFC</span><b>ONLINE</b><span>WALLET</span><b>READY</b><span>PUSH</span><b>READY</b></div></div>
           </div>
         </section>
 
-        <section className="orb-statement">
-          <div className="statement-mark">O</div>
-          <div>
-            <span>ORBÍTICA / PRINCIPIO DE PRODUCTO</span>
-            <h2>La tecnología desaparece. La experiencia del negocio queda.</h2>
+        <section id="casos" className="o-section">
+          <div className="o-section-head">
+            <div><span className="o-section-number">/03</span><h2>Se adapta al negocio, no al revés.</h2></div>
+            <p>La misma infraestructura puede sentirse completamente distinta según la marca y la lógica de recompensa.</p>
           </div>
-          <div className="statement-actions">
-            <Link className="orb-button strong" href="/join/porras">Probar demo</Link>
-            <Link className="orb-link" href="/support">Hablar con soporte ↗</Link>
+          <div className="o-use-grid">
+            {useCases.map(([title, description], index) => (
+              <article className="o-use-case" key={title}>
+                <span>0{index + 1}</span><h3>{title}</h3><p>{description}</p><div className="o-use-line" />
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="o-final-cta">
+          <div className="o-final-logo"><Brand product="Loyalty" compact /></div>
+          <h2>Más retorno. Menos fricción.</h2>
+          <p>Una infraestructura de fidelización lista para operar, medir y crecer con cada negocio.</p>
+          <div className="o-hero-actions">
+            <Link className="o-button o-button-primary" href="/join/porras">Ver demo</Link>
+            <Link className="o-button o-button-ghost" href="/login">Entrar al panel</Link>
           </div>
         </section>
       </div>
 
-      <footer className="orb-footer">
-        <div className="orb-wrap orb-footer-inner">
-          <div className="orb-wordmark muted"><span className="orb-symbol"><i /><b /></span><span><strong>ORBÍTICA</strong><small>LOYALTY SYSTEM</small></span></div>
-          <span>© {new Date().getFullYear()} Orbítica Studio</span>
-          <div><Link href="/support">Soporte</Link><Link href="/login">Panel</Link></div>
-        </div>
-      </footer>
+      <footer className="o-footer"><div className="o-wrap"><span>Orbítica Studio © {new Date().getFullYear()}</span><div><Link href="/support">Soporte</Link><Link href="/login">Panel</Link></div></div></footer>
     </main>
   );
 }

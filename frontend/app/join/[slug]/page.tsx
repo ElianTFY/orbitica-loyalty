@@ -1,71 +1,153 @@
-"use client";
-
-import { FormEvent, useEffect, useState, type CSSProperties } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Brand from "@/components/Brand";
-import { apiFetch, readError } from "@/lib/api";
-import type { PublicBusiness } from "@/lib/types";
+'use client';
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import BrandLogo from '@/components/brand/BrandLogo';
+import BrandSymbol from '@/components/brand/BrandSymbol';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { PublicBusiness } from '@/types';
 
 export default function JoinPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const params = useParams<{ slug: string }>();
   const router = useRouter();
+  const slug = params?.slug;
+
   const [business, setBusiness] = useState<PublicBusiness | null>(null);
-  const [savedToken, setSavedToken] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setSavedToken(localStorage.getItem(`orbitica_card_${slug}`));
-    apiFetch(`/public/business/${slug}`)
-      .then(async (r) => { if (!r.ok) throw new Error(await readError(r, "Negocio no encontrado.")); return r.json(); })
-      .then(setBusiness)
-      .catch((e) => setError(e.message));
+    async function load() {
+      if (!slug) return;
+      try {
+        const res = await fetch(`/api/backend/api/public/business/${slug}`);
+        if (!res.ok) throw new Error('Negocio no disponible.');
+        const data = await res.json();
+        setBusiness(data);
+      } catch (err: any) {
+        setError(err.message || 'No se encontró el negocio.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, [slug]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setLoading(true); setError("");
-    const fd = new FormData(event.currentTarget);
-    const response = await apiFetch(`/public/business/${slug}/join`, { method: "POST", body: JSON.stringify({ name: fd.get("name"), phone: fd.get("phone"), email: fd.get("email") || null }) });
-    if (!response.ok) { setError(await readError(response, "No pudimos crear tu tarjeta.")); setLoading(false); return; }
-    const data = await response.json();
-    localStorage.setItem(`orbitica_card_${slug}`, data.public_token);
-    router.push(`/card/${data.public_token}`);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !phone.trim()) return;
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const res = await fetch(`/api/backend/api/public/business/${slug}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.trim(),
+          email: email.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Error al obtener tarjeta.');
+      }
+      router.push(`/card/${data.public_token}`);
+    } catch (err: any) {
+      setError(err.message || 'Error al procesar el registro.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  if (!business && !error) return <main className="customer-page"><div className="customer-shell"><p>Cargando programa…</p></div></main>;
-  if (!business) return <main className="customer-page"><div className="customer-shell"><div className="alert error">{error}</div></div></main>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center p-4">
+        <Skeleton className="h-80 w-full max-w-sm" />
+      </div>
+    );
+  }
+
+  if (!business) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center p-4 text-center">
+        <BrandLogo product="LOYALTY" size="md" />
+        <Card className="mt-6 p-6 max-w-sm">
+          <p className="text-sm text-rose-400 font-medium">{error || 'Negocio no encontrado.'}</p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <main className="customer-page join-v2" style={{ "--business": business.primary_color } as CSSProperties}>
-      <div className="join-v2-shell">
-        <header className="join-v2-brand"><Brand product="Loyalty" compact /><span>POWERED LOYALTY INFRASTRUCTURE</span></header>
-        <section className="join-v2-grid">
-          <div className="join-v2-story">
-            <div className="business-badge">{business.name.slice(0, 2).toUpperCase()}</div>
-            <span className="eyebrow">PROGRAMA DE CLIENTE FRECUENTE</span>
-            <h1>{business.name}</h1>
-            <p>Tu próxima visita ya cuenta. Registrate una vez y llevá el progreso del programa directamente en tu teléfono.</p>
-            <div className="join-v2-reward"><span>RECOMPENSA</span><strong>{business.reward_name}</strong><small>al completar {business.stamps_required} sellos</small></div>
-            <div className="join-v2-stamps">{Array.from({ length: Math.min(business.stamps_required, 10) }).map((_, i) => <span key={i}>{String(i + 1).padStart(2, "0")}</span>)}</div>
-            <div className="join-v2-meta"><span>QR / NFC</span><span>Tarjeta digital</span><span>Wallet ready</span></div>
+    <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center p-4 text-[#E5E6EA]">
+      <div className="w-full max-w-sm flex flex-col items-center gap-6">
+        <BrandLogo product="LOYALTY" size="sm" />
+
+        <Card className="w-full p-6">
+          <div className="text-center mb-6">
+            <BrandSymbol size={44} className="mx-auto mb-3" />
+            <h1 className="text-xl font-bold text-white tracking-tight font-display">{business.name}</h1>
+            <p className="text-xs text-[#8F9098] mt-1">
+              {business.welcome_message || 'Obtené tu tarjeta digital y acumulá para premios exclusivos.'}
+            </p>
           </div>
 
-          <section className="join-card join-form-v2">
-            <div className="join-form-head"><span>CREAR TARJETA</span><small>01 / REGISTRO</small></div>
-            <h2>Empezá tu tarjeta.</h2>
-            <p>Usá tus datos reales para que el negocio pueda identificar tu programa correctamente.</p>
-            {savedToken && <button className="button soft full" onClick={() => router.push(`/card/${savedToken}`)}>Abrir mi tarjeta guardada</button>}
-            <form onSubmit={submit} className="form">
-              <label>Nombre<input name="name" required minLength={2} placeholder="Tu nombre" /></label>
-              <label>Teléfono<input name="phone" required minLength={6} placeholder="8888-8888" inputMode="tel" /></label>
-              <label>Email <span className="optional">(opcional)</span><input name="email" type="email" placeholder="correo@ejemplo.com" /></label>
-              <button className="button primary full" disabled={loading}>{loading ? "Creando tarjeta…" : "Obtener mi tarjeta"}</button>
-            </form>
-            {error && <div className="alert error">{error}</div>}
-            <p className="privacy-note">El saldo solo puede ser modificado por personal autorizado del negocio.</p>
-          </section>
-        </section>
+          <div className="bg-[#1A1B1F] p-3.5 rounded-xl border border-[#27282D] mb-5 text-center">
+            <span className="text-[10px] uppercase font-semibold text-[#8F9098] tracking-widest block">
+              Premio Disponible
+            </span>
+            <strong className="text-sm text-[#0EA5FF] block mt-0.5">{business.reward_name}</strong>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div className="text-xs p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                {error}
+              </div>
+            )}
+
+            <Input
+              label="Tu Nombre Completo"
+              placeholder="Ej. Juan Solís"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+
+            <Input
+              label="Número de Teléfono / WhatsApp"
+              placeholder="Ej. 8888-8888"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+            />
+
+            <Input
+              label="Correo Electrónico (Opcional)"
+              placeholder="juan@ejemplo.com"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <Button type="submit" variant="primary" size="lg" loading={submitting} fullWidth className="mt-2">
+              Obtener Mi Tarjeta Digital →
+            </Button>
+          </form>
+        </Card>
+
+        <div className="text-center text-[11px] text-[#64656A]">
+          Sin descargar apps pesadas. Compatible con Apple Wallet y Google Wallet.
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

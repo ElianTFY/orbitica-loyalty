@@ -1,178 +1,561 @@
-"use client";
+'use client';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import BrandLogo from '@/components/brand/BrandLogo';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Pagination } from '@/components/ui/Pagination';
+import { useToast } from '@/hooks/use-toast';
+import { useDebounce } from '@/hooks/use-debounce';
+import { apiClient } from '@/lib/api-client';
+import { DashboardData, Customer, CustomerDetail, User, Reward, PaginatedResponse } from '@/types';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import Brand from "@/components/Brand";
-import { apiFetch, readError } from "@/lib/api";
-import type { Customer, Dashboard, User } from "@/lib/types";
+import { MetricsGrid } from '@/features/dashboard/MetricsGrid';
+import { ActivityFeed } from '@/features/dashboard/ActivityFeed';
+import { CustomerTable } from '@/features/customers/CustomerTable';
+import { CustomerDetailModal } from '@/features/customers/CustomerDetailModal';
+import { CustomerCreateModal } from '@/features/customers/CustomerCreateModal';
+import { ProgramConfig } from '@/features/loyalty/ProgramConfig';
+import { RewardCatalog } from '@/features/loyalty/RewardCatalog';
+import { StaffTable } from '@/features/staff/StaffTable';
+import { StaffCreateModal } from '@/features/staff/StaffCreateModal';
+import { ChangePasswordForm } from '@/features/auth/ChangePasswordForm';
 
-type Tab = "resumen" | "clientes" | "programa" | "equipo" | "seguridad";
+type Tab = 'overview' | 'customers' | 'program' | 'rewards' | 'staff' | 'security';
 
 export default function AdminPage() {
   const router = useRouter();
-  const [me, setMe] = useState<User | null>(null);
-  const [tab, setTab] = useState<Tab>("resumen");
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const toast = useToast();
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
+
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [customersData, setCustomersData] = useState<PaginatedResponse<Customer> | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const debouncedSearch = useDebounce(searchQuery, 350);
+
+  const [rewards, setRewards] = useState<Reward[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
-  const [query, setQuery] = useState("");
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const meResponse = await fetch("/api/session/me", { cache: "no-store" });
-    if (!meResponse.ok) { router.replace("/login"); return; }
-    const user: User = await meResponse.json();
-    if (user.role === "superadmin") { router.replace("/superadmin"); return; }
-    setMe(user);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
+  const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
+  const [createStaffOpen, setCreateStaffOpen] = useState(false);
+  const [busyCustomerId, setBusyCustomerId] = useState<string | null>(null);
 
-    const [d, c] = await Promise.all([apiFetch("/admin/dashboard"), apiFetch("/admin/customers")]);
-    if (d.ok) setDashboard(await d.json());
-    if (c.ok) setCustomers(await c.json());
-    if (user.role === "owner") {
-      const s = await apiFetch("/admin/staff");
-      if (s.ok) setStaff(await s.json());
+  const loadInitial = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [u, d] = await Promise.all([
+        apiClient<User>('/api/auth/me'),
+        apiClient<DashboardData>('/api/admin/dashboard'),
+      ]);
+      setUser(u);
+      setDashboard(d);
+    } catch (err: any) {
+      if (err.status === 401) {
+        router.push('/login');
+      } else {
+        toast.error(err.message || 'Error al cargar información.');
+      }
+    } finally {
+      setLoading(false);
     }
   }, [router]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
 
-  const filtered = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    if (!q) return customers;
-    return customers.filter((c) => `${c.name} ${c.phone} ${c.card_code}`.toLowerCase().includes(q));
-  }, [customers, query]);
+  const loadCustomers = useCallback(async () => {
+    try {
+      setCustomersLoading(true);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: '15',
+      });
+      if (debouncedSearch.trim()) {
+        params.set('q', debouncedSearch.trim());
+      }
+      const data = await apiClient<PaginatedResponse<Customer>>(`/api/admin/customers/paginated?${params.toString()}`);
+      setCustomersData(data);
+    } catch (err: any) {
+      toast.error('Error al consultar clientes.');
+    } finally {
+      setCustomersLoading(false);
+    }
+  }, [page, debouncedSearch]);
 
-  async function action(customerId: string, kind: "stamp" | "redeem") {
-    setBusy(customerId); setNotice(""); setError("");
-    const response = await apiFetch(`/admin/customers/${customerId}/${kind}`, {
-      method: "POST",
-      ...(kind === "stamp" ? { body: JSON.stringify({ amount: 1 }) } : {}),
+  useEffect(() => {
+    if (activeTab === 'customers' || activeTab === 'overview') {
+      loadCustomers();
+    }
+  }, [activeTab, loadCustomers]);
+
+  const loadRewards = useCallback(async () => {
+    try {
+      const data = await apiClient<Reward[]>('/api/admin/rewards');
+      setRewards(data);
+    } catch (err: any) {
+      console.error(err);
+    }
+  }, []);
+
+  const loadStaff = useCallback(async () => {
+    try {
+      const data = await apiClient<User[]>('/api/admin/staff');
+      setStaff(data);
+    } catch (err: any) {
+      console.error(err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'rewards') loadRewards();
+    if (activeTab === 'staff') loadStaff();
+  }, [activeTab, loadRewards, loadStaff]);
+
+  async function handleSelectCustomer(c: Customer) {
+    try {
+      const detail = await apiClient<CustomerDetail>(`/api/admin/customers/${c.id}`);
+      setSelectedCustomer(detail);
+    } catch (err: any) {
+      toast.error('No se pudo abrir el detalle.');
+    }
+  }
+
+  async function handleQuickStamp(c: Customer) {
+    setBusyCustomerId(c.id);
+    try {
+      await apiClient<Customer>(`/api/admin/customers/${c.id}/stamp`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: 1 }),
+      });
+      toast.success(`+1 Sello para ${c.name}`);
+      loadCustomers();
+      const d = await apiClient<DashboardData>('/api/admin/dashboard');
+      setDashboard(d);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al otorgar sello.');
+    } finally {
+      setBusyCustomerId(null);
+    }
+  }
+
+  async function handleQuickRedeem(c: Customer) {
+    setBusyCustomerId(c.id);
+    try {
+      await apiClient<Customer>(`/api/admin/customers/${c.id}/redeem`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      toast.success(`Premio canjeado para ${c.name}`);
+      loadCustomers();
+      const d = await apiClient<DashboardData>('/api/admin/dashboard');
+      setDashboard(d);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al canjear.');
+    } finally {
+      setBusyCustomerId(null);
+    }
+  }
+
+  async function handleDetailAddStamp(amount: number) {
+    if (!selectedCustomer) return;
+    try {
+      await apiClient<Customer>(`/api/admin/customers/${selectedCustomer.id}/stamp`, {
+        method: 'POST',
+        body: JSON.stringify({ amount }),
+      });
+      toast.success(`+${amount} sellos acreditados.`);
+      const updated = await apiClient<CustomerDetail>(`/api/admin/customers/${selectedCustomer.id}`);
+      setSelectedCustomer(updated);
+      loadCustomers();
+      const d = await apiClient<DashboardData>('/api/admin/dashboard');
+      setDashboard(d);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al otorgar sellos.');
+    }
+  }
+
+  async function handleDetailAddPoints(amount: number, spendAmount?: number) {
+    if (!selectedCustomer) return;
+    try {
+      await apiClient<Customer>(`/api/admin/customers/${selectedCustomer.id}/points`, {
+        method: 'POST',
+        body: JSON.stringify({ amount, spend_amount: spendAmount }),
+      });
+      toast.success(`+${amount} puntos acreditados.`);
+      const updated = await apiClient<CustomerDetail>(`/api/admin/customers/${selectedCustomer.id}`);
+      setSelectedCustomer(updated);
+      loadCustomers();
+      const d = await apiClient<DashboardData>('/api/admin/dashboard');
+      setDashboard(d);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al otorgar puntos.');
+    }
+  }
+
+  async function handleDetailRedeem(rewardId?: string) {
+    if (!selectedCustomer) return;
+    try {
+      await apiClient<Customer>(`/api/admin/customers/${selectedCustomer.id}/redeem`, {
+        method: 'POST',
+        body: JSON.stringify({ reward_id: rewardId }),
+      });
+      toast.success('Recompensa canjeada con éxito.');
+      const updated = await apiClient<CustomerDetail>(`/api/admin/customers/${selectedCustomer.id}`);
+      setSelectedCustomer(updated);
+      loadCustomers();
+      const d = await apiClient<DashboardData>('/api/admin/dashboard');
+      setDashboard(d);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al canjear.');
+    }
+  }
+
+  async function handleRotateToken() {
+    if (!selectedCustomer) return;
+    try {
+      await apiClient<Customer>(`/api/admin/customers/${selectedCustomer.id}/rotate-token`, {
+        method: 'POST',
+      });
+      toast.success('Enlace de tarjeta renovado.');
+      const updated = await apiClient<CustomerDetail>(`/api/admin/customers/${selectedCustomer.id}`);
+      setSelectedCustomer(updated);
+    } catch (err: any) {
+      toast.error('Error al renovar enlace.');
+    }
+  }
+
+  async function handleCreateCustomer(data: { name: string; phone: string; email?: string }) {
+    await apiClient<Customer>('/api/admin/customers', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
-    if (!response.ok) setError(await readError(response));
-    else setNotice(kind === "stamp" ? "Sello agregado." : "Premio canjeado.");
-    await load(); setBusy(null);
+    toast.success('Cliente registrado correctamente.');
+    loadCustomers();
+    const d = await apiClient<DashboardData>('/api/admin/dashboard');
+    setDashboard(d);
   }
 
-  async function rotateCardToken(customerId: string) {
-    if (!window.confirm("Esto invalidará el enlace anterior de la tarjeta. ¿Continuar?")) return;
-    setBusy(customerId); setError(""); setNotice("");
-    const response = await apiFetch(`/admin/customers/${customerId}/rotate-token`, { method: "POST" });
-    if (!response.ok) setError(await readError(response)); else setNotice("Enlace de tarjeta renovado.");
-    await load(); setBusy(null);
+  async function handleSaveProgram(data: any) {
+    const updated = await apiClient<any>('/api/admin/business', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (dashboard) {
+      setDashboard({ ...dashboard, business: updated });
+    }
+    toast.success('Configuración guardada.');
   }
 
-  async function createCustomer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError("");
-    const form = event.currentTarget; const fd = new FormData(form);
-    const response = await apiFetch("/admin/customers", { method: "POST", body: JSON.stringify({ name: fd.get("name"), phone: fd.get("phone"), email: fd.get("email") || null }) });
-    if (!response.ok) { setError(await readError(response)); return; }
-    form.reset(); setNotice("Cliente creado."); await load();
+  async function handleCreateReward(data: any) {
+    await apiClient<Reward>('/api/admin/rewards', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    toast.success('Recompensa creada.');
+    loadRewards();
   }
 
-  async function updateProgram(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const fd = new FormData(event.currentTarget);
-    const response = await apiFetch("/admin/business", { method: "PATCH", body: JSON.stringify({ name: fd.get("name"), reward_name: fd.get("reward_name"), stamps_required: Number(fd.get("stamps_required")), primary_color: fd.get("primary_color") }) });
-    if (!response.ok) { setError(await readError(response)); return; }
-    setNotice("Programa actualizado."); await load();
+  async function handleToggleReward(reward: Reward) {
+    await apiClient<Reward>(`/api/admin/rewards/${reward.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active: !reward.active }),
+    });
+    toast.info(reward.active ? 'Recompensa pausada.' : 'Recompensa activada.');
+    loadRewards();
   }
 
-  async function createStaff(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = event.currentTarget; const fd = new FormData(form);
-    const response = await apiFetch("/admin/staff", { method: "POST", body: JSON.stringify({ full_name: fd.get("full_name"), email: fd.get("email"), password: fd.get("password") }) });
-    if (!response.ok) { setError(await readError(response)); return; }
-    form.reset(); setNotice("Empleado creado."); await load();
+  async function handleCreateStaff(data: any) {
+    await apiClient<User>('/api/admin/staff', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    toast.success('Colaborador registrado.');
+    loadStaff();
   }
 
-  async function toggleStaff(id: string) {
-    const response = await apiFetch(`/admin/staff/${id}/toggle`, { method: "PATCH" });
-    if (!response.ok) setError(await readError(response)); else setNotice("Empleado actualizado.");
-    await load();
+  async function handleToggleStaff(u: User) {
+    await apiClient<User>(`/api/admin/staff/${u.id}/toggle`, {
+      method: 'PATCH',
+    });
+    toast.info(u.active ? 'Colaborador desactivado.' : 'Colaborador reactivado.');
+    loadStaff();
   }
 
-  async function changePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(""); setNotice("");
-    const form = event.currentTarget; const fd = new FormData(form);
-    const next = String(fd.get("new_password") || ""); const confirm = String(fd.get("confirm_password") || "");
-    if (next !== confirm) { setError("Las contraseñas nuevas no coinciden."); return; }
-    const response = await apiFetch("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password: fd.get("current_password"), new_password: next }) });
-    if (!response.ok) { setError(await readError(response)); return; }
-    await fetch("/api/session/logout", { method: "POST" }); router.replace("/login");
+  async function handlePasswordChanged(currentPassword: string, newPassword: string) {
+    await apiClient('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    toast.success('Contraseña actualizada. Volvé a ingresar.');
+    router.push('/login');
   }
 
-  async function copyJoinLink() {
-    if (!dashboard) return;
-    try { await navigator.clipboard.writeText(`${window.location.origin}/join/${dashboard.business.slug}`); setNotice("Enlace del programa copiado."); }
-    catch { setError("No se pudo copiar el enlace."); }
+  async function handleLogout() {
+    await fetch('/api/session/logout', { method: 'POST' }).catch(() => null);
+    router.push('/login');
   }
 
-  async function logout() { await fetch("/api/session/logout", { method: "POST" }); router.replace("/login"); }
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between">
+          <Skeleton className="w-48 h-8" />
+          <Skeleton className="w-24 h-8" />
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+        </div>
+        <Skeleton className="h-96" />
+      </div>
+    );
+  }
 
-  if (!dashboard || !me) return <main className="admin-loading">Cargando panel…</main>;
-
-  const business = dashboard.business;
-  const readyRewards = customers.filter((c) => c.stamp_balance >= business.stamps_required).length;
-  const averageProgress = customers.length ? Math.round(customers.reduce((sum, c) => sum + Math.min(c.stamp_balance, business.stamps_required), 0) / (customers.length * business.stamps_required) * 100) : 0;
+  if (!dashboard || !user) return null;
+  const { business } = dashboard;
 
   return (
-    <main className="admin-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand"><Brand href="/" product="Loyalty" compact /></div>
-        <nav>
-          <Nav index="01" active={tab === "resumen"} onClick={() => setTab("resumen")}>Resumen</Nav>
-          <Nav index="02" active={tab === "clientes"} onClick={() => setTab("clientes")}>Clientes</Nav>
-          <Nav index="03" active={tab === "programa"} onClick={() => setTab("programa")}>Programa</Nav>
-          {me.role === "owner" && <Nav index="04" active={tab === "equipo"} onClick={() => setTab("equipo")}>Equipo</Nav>}
-          <Nav index={me.role === "owner" ? "05" : "04"} active={tab === "seguridad"} onClick={() => setTab("seguridad")}>Seguridad</Nav>
-        </nav>
-        <div className="sidebar-footer"><span>{me.full_name}</span><small>{me.role === "owner" ? "Dueño" : "Empleado"}</small><button onClick={logout}>Cerrar sesión</button></div>
-      </aside>
-
-      <section className="admin-main">
-        <header className="admin-top">
-          <div><span className="eyebrow">CONTROL ROOM / {business.slug.toUpperCase()}</span><h1>{business.name}</h1></div>
-          <div className="admin-head-actions"><button className="button soft" type="button" onClick={copyJoinLink}>Copiar enlace</button><a className="button" href={`/join/${business.slug}`} target="_blank">Abrir experiencia ↗</a></div>
-        </header>
-
-        {(notice || error) && <div className={`alert ${error ? "error" : "success"}`}>{error || notice}</div>}
-
-        {tab === "resumen" && <>
-          <div className="stats-grid">
-            <Stat label="Clientes" value={dashboard.customers} hint={`+${dashboard.new_customers_month} este mes`} />
-            <Stat label="Premios listos" value={readyRewards} />
-            <Stat label="Progreso medio" value={`${averageProgress}%`} />
-            <Stat label="Canjes" value={dashboard.rewards_redeemed} />
+    <div className="min-h-screen flex flex-col bg-[#0A0A0A] text-[#E5E6EA]">
+      <header className="border-b border-[#1A1B1F] bg-[#121316]/90 backdrop-blur-md sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <BrandLogo product="LOYALTY" size="sm" />
+            <span className="hidden sm:inline-block w-px h-5 bg-[#27282D]" />
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="font-semibold text-white text-sm">{business.name}</span>
+              <Badge variant="primary" size="sm">
+                {business.program_type === 'points' ? 'Puntos' : 'Sellos'}
+              </Badge>
+            </div>
           </div>
-          <div className="dashboard-grid">
-            <section className="panel"><div className="panel-head"><div><h2>Actividad reciente</h2><p>Movimientos registrados en el programa.</p></div><span className="panel-code">LIVE FEED</span></div><div className="activity-list">
-              {dashboard.recent_activity.map((a) => <div className="activity-item" key={a.id}><div className={`activity-icon ${a.type}`}>{a.type === "redeem" ? "★" : "+"}</div><div><strong>{a.customer_name}</strong><span>{a.type === "redeem" ? "Canjeó un premio" : `Recibió ${a.amount} sello${a.amount === 1 ? "" : "s"}`}</span></div><div className="activity-meta"><span>{a.actor_name || "Sistema"}</span><small>{new Date(a.created_at).toLocaleString("es-CR")}</small></div></div>)}
-              {!dashboard.recent_activity.length && <div className="empty-state">Todavía no hay movimientos.</div>}
-            </div></section>
-            <section className="panel qr-panel"><div className="panel-head"><div><h2>Punto de entrada</h2><p>Este QR y el NFC comparten el mismo destino.</p></div><span className="panel-code">QR / NFC</span></div><img src={`/api/backend/public/business/${business.slug}/qr`} alt={`QR ${business.name}`} /><code>/join/{business.slug}</code><a className="button full" href={`/api/backend/public/business/${business.slug}/qr`} target="_blank">Abrir QR</a></section>
+
+          <div className="flex items-center gap-3">
+            <a
+              href={`/join/${business.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden md:inline-flex items-center gap-1.5 text-xs text-[#38bdf8] bg-[#1A1B1F] hover:bg-[#27282D] px-3 py-1.5 rounded-lg border border-[#27282D] transition-colors"
+            >
+              <span>Abrir QR de Registro</span> ↗
+            </a>
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-semibold text-white">{user.full_name}</div>
+              <div className="text-[10px] text-[#8F9098] uppercase tracking-wider">{user.role}</div>
+            </div>
+            <Button size="sm" variant="ghost" onClick={handleLogout}>
+              Salir
+            </Button>
           </div>
-        </>}
+        </div>
 
-        {tab === "clientes" && <div className="two-column">
-          <section className="panel"><div className="panel-head"><div><h2>Clientes</h2><p>Buscá por nombre, teléfono o código.</p></div><input className="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar…" /></div><div className="table-wrap"><table><thead><tr><th>Cliente</th><th>Teléfono</th><th>Código</th><th>Sellos</th><th>Canjes</th><th>Acciones</th></tr></thead><tbody>
-            {filtered.map((c) => <tr key={c.id}><td><strong>{c.name}</strong><small>{c.email || ""}</small></td><td>{c.phone}</td><td><code>{c.card_code}</code></td><td><span className="pill">{c.stamp_balance}/{business.stamps_required}</span></td><td>{c.rewards_redeemed}</td><td className="row-actions"><button className="mini primary" disabled={busy === c.id} onClick={() => action(c.id, "stamp")}>+ Sello</button><button className="mini" disabled={busy === c.id} onClick={() => action(c.id, "redeem")}>Canjear</button><a className="mini" href={`/card/${c.public_token}`} target="_blank">Tarjeta</a>{me.role === "owner" && <button className="mini" disabled={busy === c.id} onClick={() => rotateCardToken(c.id)}>Reemitir</button>}</td></tr>)}
-            {!filtered.length && <tr><td className="empty-cell" colSpan={6}>No hay clientes.</td></tr>}
-          </tbody></table></div></section>
-          <section className="panel side-form"><div className="panel-head"><div><h2>Nuevo cliente</h2><p>Alta manual desde el mostrador.</p></div></div><form className="form" onSubmit={createCustomer}><label>Nombre<input name="name" required /></label><label>Teléfono<input name="phone" required /></label><label>Email<input name="email" type="email" /></label><button className="button primary full">Crear cliente</button></form></section>
-        </div>}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center gap-1 overflow-x-auto border-t border-[#1A1B1F] py-1 text-xs">
+          {[
+            { id: 'overview', label: '📊 Dashboard' },
+            { id: 'customers', label: '👥 Clientes & Mostrador' },
+            { id: 'program', label: '⚙️ Programa' },
+            { id: 'rewards', label: '🎁 Recompensas' },
+            { id: 'staff', label: '👔 Equipo' },
+            { id: 'security', label: '🔒 Seguridad' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id as Tab)}
+              className={`px-3 py-2 rounded-lg font-medium transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === t.id
+                  ? 'bg-[#0EA5FF]/15 text-[#0EA5FF] font-semibold border border-[#0EA5FF]/30'
+                  : 'text-[#8F9098] hover:text-white hover:bg-[#1A1B1F]'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </header>
 
-        {tab === "programa" && <div className="two-column">
-          <section className="panel side-form wide-form"><div className="panel-head"><div><h2>Configuración del programa</h2><p>Estos cambios se reflejan en las tarjetas.</p></div></div><form className="form" onSubmit={updateProgram}><label>Nombre del negocio<input name="name" defaultValue={business.name} required /></label><label>Premio<input name="reward_name" defaultValue={business.reward_name} required /></label><label>Sellos necesarios<input name="stamps_required" type="number" min={2} max={50} defaultValue={business.stamps_required} required /></label><label>Color principal<input name="primary_color" type="color" defaultValue={business.primary_color} /></label><button className="button primary">Guardar cambios</button></form></section>
-          <section className="panel preview-program"><span className="eyebrow">VISTA DE SISTEMA</span><h3>{business.name}</h3><div className="small-stamps">{Array.from({ length: Math.min(business.stamps_required, 20) }).map((_, i) => <span key={i}>{i + 1}</span>)}</div><p>Premio: <strong>{business.reward_name}</strong></p><p className="micro">La tarjeta final mantiene la identidad del negocio y la firma tecnológica de Orbítica.</p></section>
-        </div>}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
+        {activeTab === 'overview' && (
+          <div className="flex flex-col gap-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white tracking-tight font-display">
+                  Hola, {user.full_name.split(' ')[0]} 👋
+                </h1>
+                <p className="text-xs text-[#8F9098] mt-0.5">
+                  Resumen operativo del programa de fidelidad en vivo.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="primary" size="sm" onClick={() => setCreateCustomerOpen(true)}>
+                  + Registrar Cliente
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setActiveTab('customers')}>
+                  Ver Mostrador Completo →
+                </Button>
+              </div>
+            </div>
 
-        {tab === "equipo" && me.role === "owner" && <div className="two-column"><section className="panel"><div className="panel-head"><div><h2>Equipo</h2><p>Personas autorizadas para operar el programa.</p></div></div><div className="staff-list">{staff.map((u) => <div className="staff-row" key={u.id}><div><strong>{u.full_name}</strong><span>{u.email}</span></div><span className={`status ${u.active ? "on" : "off"}`}>{u.active ? "Activo" : "Inactivo"}</span>{u.role === "staff" ? <button className="mini" onClick={() => toggleStaff(u.id)}>{u.active ? "Desactivar" : "Activar"}</button> : <span className="owner-badge">Dueño</span>}</div>)}</div></section><section className="panel side-form"><div className="panel-head"><div><h2>Agregar empleado</h2><p>Usá una contraseña temporal fuerte.</p></div></div><form className="form" onSubmit={createStaff}><label>Nombre<input name="full_name" required /></label><label>Correo<input name="email" type="email" required /></label><label>Contraseña temporal<input name="password" type="password" minLength={12} required /></label><button className="button primary full">Crear empleado</button></form></section></div>}
+            <MetricsGrid data={dashboard} />
 
-        {tab === "seguridad" && <div className="two-column"><section className="panel side-form"><div className="panel-head"><div><h2>Cambiar contraseña</h2><p>Al cambiarla se cerrarán las sesiones activas.</p></div></div><form className="form" onSubmit={changePassword}><label>Contraseña actual<input name="current_password" type="password" autoComplete="current-password" required /></label><label>Nueva contraseña<input name="new_password" type="password" minLength={12} autoComplete="new-password" required /></label><label>Confirmar nueva contraseña<input name="confirm_password" type="password" minLength={12} autoComplete="new-password" required /></label><p className="micro">Mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo.</p><button className="button primary full">Cambiar contraseña</button></form></section></div>}
-      </section>
-    </main>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold text-white tracking-tight">
+                    Clientes Recientes en el Mostrador
+                  </h2>
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab('customers')}>
+                    Ver todos ({dashboard.customers}) ↗
+                  </Button>
+                </div>
+                {customersData && (
+                  <CustomerTable
+                    customers={customersData.items.slice(0, 5)}
+                    business={business}
+                    onSelect={handleSelectCustomer}
+                    onQuickStamp={handleQuickStamp}
+                    onQuickRedeem={handleQuickRedeem}
+                    busyId={busyCustomerId}
+                  />
+                )}
+              </div>
+
+              <div className="lg:col-span-1">
+                <ActivityFeed activities={dashboard.recent_activity} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'customers' && (
+          <div className="flex flex-col gap-5 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white tracking-tight font-display">
+                  Directorio de Clientes & Mostrador
+                </h1>
+                <p className="text-xs text-[#8F9098] mt-0.5">
+                  Buscá clientes por nombre, teléfono o código para sumar sellos o canjear premios.
+                </p>
+              </div>
+              <Button variant="primary" size="sm" onClick={() => setCreateCustomerOpen(true)}>
+                + Nuevo Cliente
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-3 bg-[#121316] p-3 rounded-xl border border-[#27282D]">
+              <span className="text-[#8F9098] text-base ml-1">🔍</span>
+              <input
+                type="text"
+                placeholder="Buscar por nombre, teléfono o código..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full bg-transparent text-sm text-[#E5E6EA] placeholder-[#64656A] focus:outline-none"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-xs text-[#8F9098] hover:text-white px-2 py-1 rounded bg-[#1A1B1F]"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+
+            {customersLoading ? (
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : customersData ? (
+              <div className="flex flex-col gap-4">
+                <CustomerTable
+                  customers={customersData.items}
+                  business={business}
+                  onSelect={handleSelectCustomer}
+                  onQuickStamp={handleQuickStamp}
+                  onQuickRedeem={handleQuickRedeem}
+                  busyId={busyCustomerId}
+                />
+                <Pagination
+                  page={customersData.page}
+                  totalPages={customersData.total_pages}
+                  total={customersData.total}
+                  onPageChange={(p) => setPage(p)}
+                />
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {activeTab === 'program' && (
+          <div className="animate-fade-in">
+            <ProgramConfig business={business} onSave={handleSaveProgram} />
+          </div>
+        )}
+
+        {activeTab === 'rewards' && (
+          <div className="animate-fade-in">
+            <RewardCatalog
+              rewards={rewards}
+              business={business}
+              onCreate={handleCreateReward}
+              onToggleActive={handleToggleReward}
+            />
+          </div>
+        )}
+
+        {activeTab === 'staff' && (
+          <div className="animate-fade-in">
+            <StaffTable
+              staff={staff}
+              onToggle={handleToggleStaff}
+              onOpenCreate={() => setCreateStaffOpen(true)}
+            />
+          </div>
+        )}
+
+        {activeTab === 'security' && (
+          <div className="animate-fade-in flex flex-col gap-6">
+            <ChangePasswordForm onPasswordChanged={handlePasswordChanged} />
+          </div>
+        )}
+      </main>
+
+      <CustomerDetailModal
+        customer={selectedCustomer}
+        business={business}
+        open={!!selectedCustomer}
+        onClose={() => setSelectedCustomer(null)}
+        onAddStamp={handleDetailAddStamp}
+        onAddPoints={handleDetailAddPoints}
+        onRedeem={handleDetailRedeem}
+        onRotateToken={handleRotateToken}
+      />
+
+      <CustomerCreateModal
+        open={createCustomerOpen}
+        onClose={() => setCreateCustomerOpen(false)}
+        onCreate={handleCreateCustomer}
+      />
+
+      <StaffCreateModal
+        open={createStaffOpen}
+        onClose={() => setCreateStaffOpen(false)}
+        onCreate={handleCreateStaff}
+      />
+    </div>
   );
 }
-
-function Nav({ index, active, onClick, children }: { index: string; active: boolean; onClick: () => void; children: React.ReactNode }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-index">{index}</span>{children}</button>; }
-function Stat({ label, value, hint }: { label: string; value: number | string; hint?: string }) { return <div className="stat-card"><span>{label}</span><strong>{typeof value === "number" ? value.toLocaleString("es-CR") : value}</strong>{hint && <small>{hint}</small>}</div>; }

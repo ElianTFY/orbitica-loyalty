@@ -1,49 +1,94 @@
-"use client";
-
-import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Brand from "@/components/Brand";
+'use client';
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import BrandLogo from '@/components/brand/BrandLogo';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetch("/api/session/me", { cache: "no-store" }).then(async (r) => {
-      if (!r.ok) return;
-      const user = await r.json();
-      router.replace(user.role === "superadmin" ? "/superadmin" : "/admin");
-    });
-  }, [router]);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    setError('');
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setLoading(true); setError("");
-    const fd = new FormData(event.currentTarget);
-    const response = await fetch("/api/session/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: fd.get("email"), password: fd.get("password") }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) { setError(data.detail || "No pudimos iniciar sesión."); setLoading(false); return; }
-    router.replace(data.user.role === "superadmin" ? "/superadmin" : "/admin"); router.refresh();
+    try {
+      const res = await fetch('/api/session/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error?.message || 'Credenciales incorrectas');
+      }
+
+      if (data.user?.role === 'superadmin') {
+        router.push('/superadmin');
+      } else {
+        router.push('/admin');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <main className="auth-page auth-v2">
-      <section className="auth-card auth-card-v2">
-        <div className="auth-brand-lockup"><Brand product="Loyalty" /></div>
-        <div className="auth-context"><span>SECURE ACCESS</span><i /><span>ORBÍTICA CONTROL ROOM</span></div>
-        <h1>Entrar al panel</h1>
-        <p>Acceso operativo para dueños, personal autorizado y administración de la plataforma.</p>
-        <form onSubmit={submit} className="form">
-          <label>Correo<input name="email" type="email" autoComplete="email" placeholder="nombre@negocio.com" required /></label>
-          <label>Contraseña<div className="password-wrap"><input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required /><button className="password-toggle" type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Ocultar" : "Ver"}</button></div></label>
-          <button className="button primary full" disabled={loading}>{loading ? "Validando acceso…" : "Entrar"}</button>
-        </form>
-        {error && <div className="alert error">{error}</div>}
-        <div className="auth-help"><Link href="/">← Inicio</Link><Link href="/support">Soporte ↗</Link></div>
-        <div className="auth-security-note"><span>SESSION</span><strong>Protegida</strong><span>ACCESS</span><strong>Por rol</strong></div>
-      </section>
-    </main>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[#0A0A0A]">
+      <div className="w-full max-w-md flex flex-col items-center gap-6">
+        <BrandLogo product="LOYALTY" size="lg" />
+
+        <Card className="w-full p-8">
+          <div className="mb-6 text-center">
+            <h1 className="text-xl font-bold text-white tracking-tight">Acceso a la Plataforma</h1>
+            <p className="text-xs text-[#8F9098] mt-1">Ingresá a tu panel de administración o mostrador</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div className="p-3 rounded-lg text-xs bg-rose-500/10 border border-rose-500/20 text-rose-400 font-medium">
+                {error}
+              </div>
+            )}
+
+            <Input
+              label="Correo Electrónico"
+              type="email"
+              placeholder="tu@negocio.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+            />
+
+            <Input
+              label="Contraseña"
+              type="password"
+              placeholder="••••••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+
+            <Button type="submit" variant="primary" size="lg" loading={loading} fullWidth className="mt-2">
+              Ingresar al Panel
+            </Button>
+          </form>
+        </Card>
+
+        <div className="text-center text-xs text-[#64656A]">
+          Protegido con encriptación Argon2id y tokens revocables. Orbítica Studio © 2026
+        </div>
+      </div>
+    </div>
   );
 }

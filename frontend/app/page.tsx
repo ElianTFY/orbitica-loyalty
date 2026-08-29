@@ -1,147 +1,103 @@
-import Link from "next/link";
-import Brand from "@/components/Brand";
+import Link from 'next/link';
+import BrandLogo from '@/components/brand/BrandLogo';
+import { Button } from '@/components/ui/Button';
 
-const systems = [
-  ["01", "Entrada", "QR y NFC convierten cualquier mostrador, mesa o empaque en un punto de entrada al programa."],
-  ["02", "Identidad", "Cada cliente obtiene una tarjeta única, con progreso, código y acceso desde el teléfono."],
-  ["03", "Operación", "El negocio acredita sellos, canjes y movimientos desde un panel con roles y trazabilidad."],
-  ["04", "Retorno", "Wallet y notificaciones mantienen el programa visible incluso después de que el cliente se va."],
-];
-
-const useCases = [
-  ["Barberías", "Visitas recurrentes, premio por frecuencia y registro rápido desde el mostrador."],
-  ["Cafeterías", "Acumulación simple por compra, campañas y una experiencia sin app obligatoria."],
-  ["Retail", "Programas por categoría, recompensas y una tarjeta de marca que vive en el teléfono."],
-];
-
-export default function Home() {
+export default function HomePage() {
   return (
-    <main className="o-site">
-      <header className="o-nav">
-        <div className="o-wrap o-nav-inner">
-          <Brand product="Loyalty" />
-          <nav className="o-nav-links" aria-label="Navegación principal">
-            <a href="#sistema">Sistema</a>
-            <a href="#casos">Casos</a>
-            <Link href="/support">Soporte</Link>
-          </nav>
-          <div className="o-nav-actions">
-            <Link className="o-text-link" href="/join/porras">Demo cliente</Link>
-            <Link className="o-button" href="/login">Entrar al panel</Link>
+    <div className="min-h-screen flex flex-col bg-[#0A0A0A] text-[#E5E6EA]">
+      {/* Header */}
+      <header className="border-b border-[#1A1B1F] bg-[#0A0A0A]/80 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <BrandLogo product="LOYALTY" size="md" />
+          <div className="flex items-center gap-3">
+            <Link href="/login">
+              <Button variant="secondary" size="sm">
+                Iniciar Sesión
+              </Button>
+            </Link>
+            <Link href="/login">
+              <Button variant="primary" size="sm">
+                Comenzar Gratis →
+              </Button>
+            </Link>
           </div>
         </div>
       </header>
 
-      <div className="o-wrap">
-        <section className="o-hero">
-          <div className="o-hero-copy">
-            <div className="o-kicker"><span>ORBÍTICA LOYALTY</span><i /> SISTEMA DE RETENCIÓN</div>
-            <h1>Una experiencia de fidelidad que se siente como parte de tu marca.</h1>
-            <p>
-              Tarjetas digitales, QR, NFC, Wallet y notificaciones conectadas en una sola operación.
-              Sin obligar al cliente a descargar una app y sin convertir el programa en otra tarea para el negocio.
+      {/* Hero Section */}
+      <main className="flex-1 flex flex-col">
+        <section className="relative py-20 lg:py-28 overflow-hidden">
+          {/* Subtle Glows */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-[#0EA5FF]/10 blur-[120px] rounded-full pointer-events-none" />
+
+          <div className="max-w-5xl mx-auto px-6 text-center relative z-10 flex flex-col items-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1A1B1F] border border-[#27282D] text-xs font-semibold text-[#0EA5FF] mb-6">
+              <span className="w-2 h-2 rounded-full bg-[#0EA5FF] animate-pulse" />
+              SaaS de Fidelización Digital Multiempresa
+            </div>
+
+            <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight max-w-4xl font-display">
+              Fidelizá a tus clientes con <span className="text-[#0EA5FF]">tarjetas digitales</span> en su celular
+            </h1>
+
+            <p className="text-base sm:text-lg text-[#8F9098] max-w-2xl mt-6 leading-relaxed">
+              Eliminá las tarjetas de papel. Sellos, puntos, catálogo de recompensas, Apple Wallet, Google Wallet y notificaciones Web Push automáticas.
             </p>
-            <div className="o-hero-actions">
-              <Link className="o-button o-button-primary" href="/join/porras">Probar la experiencia</Link>
-              <Link className="o-button o-button-ghost" href="/login">Ver el panel</Link>
+
+            <div className="flex flex-wrap items-center justify-center gap-4 mt-8">
+              <Link href="/login">
+                <Button variant="primary" size="lg">
+                  Explorar Plataforma Demo →
+                </Button>
+              </Link>
+              <Link href="/join/demo">
+                <Button variant="secondary" size="lg">
+                  Ver Experiencia de Cliente (Join)
+                </Button>
+              </Link>
             </div>
-            <div className="o-hero-meta">
-              <span>Multi-negocio</span>
-              <span>Web Push</span>
-              <span>Apple / Google Wallet</span>
-              <span>QR + NFC</span>
+          </div>
+        </section>
+
+        {/* Feature Grid */}
+        <section className="py-16 border-t border-[#1A1B1F] bg-[#121316]/40">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="p-6 rounded-2xl bg-[#121316] border border-[#27282D]">
+                <span className="text-3xl block mb-3">🎫</span>
+                <h3 className="text-lg font-bold text-white mb-2">Sellos y Puntos Flexibles</h3>
+                <p className="text-xs text-[#8F9098] leading-relaxed">
+                  Configurá sellos por visita o puntos por monto de consumo. Múltiples recompensas con control de inventario.
+                </p>
+              </div>
+
+              <div className="p-6 rounded-2xl bg-[#121316] border border-[#27282D]">
+                <span className="text-3xl block mb-3">📱</span>
+                <h3 className="text-lg font-bold text-white mb-2">Apple & Google Wallet</h3>
+                <p className="text-xs text-[#8F9098] leading-relaxed">
+                  Tus clientes pueden guardar su pase en la billetera nativa de su iPhone o Android sin descargar ninguna app.
+                </p>
+              </div>
+
+              <div className="p-6 rounded-2xl bg-[#121316] border border-[#27282D]">
+                <span className="text-3xl block mb-3">🔔</span>
+                <h3 className="text-lg font-bold text-white mb-2">Web Push & Notificaciones</h3>
+                <p className="text-xs text-[#8F9098] leading-relaxed">
+                  Avisá a tus clientes cada vez que acumulan sellos o cuando desbloquean un premio listo para canjear.
+                </p>
+              </div>
             </div>
           </div>
-
-          <div className="o-orbit-stage" aria-label="Vista del producto">
-            <div className="o-orbit-ring o-ring-one" />
-            <div className="o-orbit-ring o-ring-two" />
-            <div className="o-orbit-ring o-ring-three" />
-            <div className="o-stage-card">
-              <div className="o-stage-head">
-                <span className="o-live-dot">LIVE</span>
-                <small>CLIENT PROFILE / 00041</small>
-              </div>
-              <div className="o-stage-business">Barbería Porras</div>
-              <div className="o-stage-progress">
-                <div><span>PROGRESO</span><strong>07</strong><small>/ 10</small></div>
-                <div><span>PREMIO</span><strong>Corte gratis</strong></div>
-              </div>
-              <div className="o-stage-stamps">
-                {Array.from({ length: 10 }).map((_, index) => <span className={index < 7 ? "on" : ""} key={index}>{String(index + 1).padStart(2, "0")}</span>)}
-              </div>
-              <div className="o-stage-footer"><span>Última actividad</span><strong>+1 sello · hace 2 min</strong></div>
-            </div>
-            <div className="o-stage-note note-a"><span>01</span><strong>QR / NFC</strong><small>punto de entrada</small></div>
-            <div className="o-stage-note note-b"><span>02</span><strong>Wallet</strong><small>presencia persistente</small></div>
-            <div className="o-stage-note note-c"><span>03</span><strong>Push</strong><small>reactivación</small></div>
-          </div>
         </section>
+      </main>
 
-        <section className="o-statement">
-          <div className="o-statement-index">/01</div>
-          <div>
-            <p className="o-statement-big">La fidelidad no debería verse como una promoción pegada encima del negocio.</p>
-            <p className="o-statement-small">Orbítica conecta la experiencia del cliente con la operación interna para que el programa se sienta propio, medible y fácil de mantener.</p>
-          </div>
-        </section>
-
-        <section id="sistema" className="o-section">
-          <div className="o-section-head">
-            <div><span className="o-section-number">/02</span><h2>Un sistema, cuatro momentos.</h2></div>
-            <p>Diseñado alrededor del recorrido real del cliente: entrar, identificarse, acumular y volver.</p>
-          </div>
-          <div className="o-system-list">
-            {systems.map(([number, title, description]) => (
-              <article className="o-system-row" key={number}>
-                <span>{number}</span><h3>{title}</h3><p>{description}</p><i>↗</i>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="o-product-frame">
-          <div className="o-product-topline"><span>ORBÍTICA CONTROL ROOM</span><span>PRODUCTION</span><span>SECURE SESSION</span></div>
-          <div className="o-product-grid">
-            <div className="o-product-panel major">
-              <div className="o-product-label">ACTIVIDAD DEL PROGRAMA</div>
-              <div className="o-product-chart">
-                {[24, 34, 29, 52, 46, 72, 66, 82, 76, 94, 86, 100].map((height, i) => <i key={i} style={{ height: `${height}%` }} />)}
-              </div>
-              <div className="o-product-axis"><span>SEM 01</span><span>SEM 06</span><span>SEM 12</span></div>
-            </div>
-            <div className="o-product-panel"><div className="o-product-label">CLIENTES</div><strong className="o-metric">128</strong><small>+18 este mes</small></div>
-            <div className="o-product-panel"><div className="o-product-label">CANJES</div><strong className="o-metric">23</strong><small>18.0% conversión</small></div>
-            <div className="o-product-panel wide"><div className="o-product-label">CANAL ACTIVO</div><div className="o-channel-row"><span>QR</span><b>ONLINE</b><span>NFC</span><b>ONLINE</b><span>WALLET</span><b>READY</b><span>PUSH</span><b>READY</b></div></div>
-          </div>
-        </section>
-
-        <section id="casos" className="o-section">
-          <div className="o-section-head">
-            <div><span className="o-section-number">/03</span><h2>Se adapta al negocio, no al revés.</h2></div>
-            <p>La misma infraestructura puede sentirse completamente distinta según la marca y la lógica de recompensa.</p>
-          </div>
-          <div className="o-use-grid">
-            {useCases.map(([title, description], index) => (
-              <article className="o-use-case" key={title}>
-                <span>0{index + 1}</span><h3>{title}</h3><p>{description}</p><div className="o-use-line" />
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="o-final-cta">
-          <div className="o-final-logo"><Brand product="Loyalty" compact /></div>
-          <h2>Más retorno. Menos fricción.</h2>
-          <p>Una infraestructura de fidelización lista para operar, medir y crecer con cada negocio.</p>
-          <div className="o-hero-actions">
-            <Link className="o-button o-button-primary" href="/join/porras">Ver demo</Link>
-            <Link className="o-button o-button-ghost" href="/login">Entrar al panel</Link>
-          </div>
-        </section>
-      </div>
-
-      <footer className="o-footer"><div className="o-wrap"><span>Orbítica Studio © {new Date().getFullYear()}</span><div><Link href="/support">Soporte</Link><Link href="/login">Panel</Link></div></div></footer>
-    </main>
+      {/* Footer */}
+      <footer className="border-t border-[#1A1B1F] py-8 text-center text-xs text-[#64656A]">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <BrandLogo product="LOYALTY" size="sm" />
+          <span>© 2026 Orbítica Studio. Todos los derechos reservados.</span>
+        </div>
+      </footer>
+    </div>
   );
 }

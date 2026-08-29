@@ -1,7 +1,8 @@
 import os
+import tempfile
 from pathlib import Path
 
-TEST_DB = Path("/tmp/orbitica_loyalty_test.db")
+TEST_DB = Path(tempfile.gettempdir()) / "orbitica_loyalty_test.db"
 if TEST_DB.exists():
     TEST_DB.unlink()
 
@@ -16,10 +17,10 @@ os.environ["GOOGLE_WALLET_ENABLED"] = "false"
 
 from fastapi.testclient import TestClient
 
-from app.database import Base, SessionLocal, engine
+from app.core.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import Business, User
-from app.security import hash_password
+from app.core.security import hash_password
 
 Base.metadata.create_all(engine)
 
@@ -167,7 +168,6 @@ def test_tenant_isolation_blocks_cross_business_customer_access():
         assert other_customer is not None
         other_customer_id = other_customer.id
 
-    # Owner from the first business must not be able to reach another tenant's record.
     headers = login_headers(password="EvenStrongerPassword456!")
     attempt = client.post(
         f"/api/admin/customers/{other_customer_id}/stamp",

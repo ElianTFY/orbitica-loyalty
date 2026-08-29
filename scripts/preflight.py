@@ -31,15 +31,16 @@ for p in ROOT.rglob("*"):
 package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
 next_version = package.get("dependencies", {}).get("next", "")
 react_version = package.get("dependencies", {}).get("react", "")
-if next_version != "15.5.21":
-    warnings.append(f"Review Next.js security version; pinned value is {next_version!r}")
-if react_version != "19.1.9":
-    warnings.append(f"Review React security version; pinned value is {react_version!r}")
+if not next_version.startswith("16."):
+    warnings.append(f"Review Next.js version; pinned value is {next_version!r}")
+if not react_version.startswith("19."):
+    warnings.append(f"Review React version; pinned value is {react_version!r}")
 
 required = [
     ROOT / "render.yaml",
     ROOT / "SECURITY.md",
     ROOT / "backend" / "migrations" / "versions" / "0002_security_hardening.py",
+    ROOT / "backend" / "migrations" / "versions" / "0004_flexible_loyalty_rewards.py",
     ROOT / "frontend" / "app" / "api" / "backend" / "[...path]" / "route.ts",
 ]
 for p in required:

@@ -1,12 +1,11 @@
 import logging
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import settings
+from .core.config import settings
+from .core.security import hash_password
 from .models import Business, User
-from .schemas import validate_strong_password
-from .security import hash_password
+from .schemas.common import validate_strong_password
 
 log = logging.getLogger("orbitica.seed")
 
@@ -16,7 +15,7 @@ def _validate_seed_password(label: str, password: str) -> None:
         try:
             validate_strong_password(password)
         except ValueError as exc:
-            raise RuntimeError(f"{label} no cumple la política de contraseña segura: {exc}") from exc
+            raise RuntimeError(f"{label} no cumple la pol?tica de contrase?a segura: {exc}") from exc
 
 
 def seed_bootstrap(db: Session) -> None:
@@ -28,7 +27,7 @@ def seed_bootstrap(db: Session) -> None:
             db.add(
                 User(
                     email=email,
-                    full_name="Orbítica Superadmin",
+                    full_name="Orb?tica Superadmin",
                     password_hash=hash_password(settings.bootstrap_superadmin_password),
                     role="superadmin",
                     business_id=None,
@@ -45,9 +44,10 @@ def seed_bootstrap(db: Session) -> None:
         business = Business(
             name=settings.demo_business_name,
             slug=settings.demo_business_slug,
+            program_type="stamps",
             reward_name="Corte gratis",
             stamps_required=10,
-            primary_color="#d6a939",
+            primary_color="#0EA5FF",
         )
         db.add(business)
         db.commit()
@@ -63,7 +63,7 @@ def seed_bootstrap(db: Session) -> None:
                 User(
                     business_id=business.id,
                     email=email,
-                    full_name="Dueño Barbería Porras",
+                    full_name="Due?o Barber?a Porras",
                     password_hash=hash_password(settings.demo_owner_password),
                     role="owner",
                 )

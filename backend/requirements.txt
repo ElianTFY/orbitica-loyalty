@@ -1,6 +1,6 @@
 fastapi==0.141.1
 uvicorn[standard]==0.48.0
-gunicorn>=26.1.0,<27
+gunicorn>=26.2.0,<27
 SQLAlchemy==2.0.52
 pydantic==2.13.4
 pydantic-settings==2.15.0

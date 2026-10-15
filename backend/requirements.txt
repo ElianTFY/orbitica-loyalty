@@ -12,5 +12,5 @@ Pillow>=12.3.0,<13
 cryptography>=50,<51
 httpx[http2]>=0.28.1,<1
 pywebpush==2.4.0
-email-validator>=2.2,<3
+email-validator>=2.3.0,<3
 alembic>=1.14,<2
